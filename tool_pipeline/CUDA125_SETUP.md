@@ -1,5 +1,38 @@
 # NVIDIA server setup (CUDA 12.5)
 
+## Downloadable installer
+
+On Ubuntu/Debian Linux x86_64, start from a single downloaded script:
+
+```bash
+wget -O install.sh https://raw.githubusercontent.com/smfabrar/minicpm_study/main/install.sh
+bash install.sh --prefix /workspace/minicpm-study-install
+```
+
+This includes the website, native build and model downloads by default. It installs apt prerequisites through root/sudo; reuses a supported Python or prepares Python 3.12; reuses Node 22.12+ or downloads a verified Node 22 archive; and downloads both repositories. When only CUDA 13 is present, it prepares CUDA 12.5 in a local Micromamba environment using [NVIDIA's labeled CUDA packages](https://docs.nvidia.com/cuda/archive/12.5.1/cuda-installation-guide-linux/index.html#installing-previous-cuda-releases). Micromamba comes from its [official distribution](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html). The NVIDIA driver and system CUDA configuration are kept as supplied by the host.
+
+Options: `--dry-run`, `--runtime-only`, `--skip-models`, `--jobs N`, `--cuda-home PATH`, and `--ref REF`. `SPEECH_STUDY_REPOSITORY` selects an alternate authenticated Git clone URL if required. The public wget command requires this script to have been pushed to the repository and the raw URL to be accessible.
+
+After installation, use separate terminals:
+
+```bash
+/workspace/minicpm-study-install/runtime/bin/start_native.sh
+```
+
+```bash
+export SPEECH_RUNTIME_TOKEN='choose-your-shared-token'
+/workspace/minicpm-study-install/runtime/bin/start_runtime.sh
+```
+
+```bash
+export SPEECH_RUNTIME_TOKEN='the-same-shared-token'
+SPEECH_STUDY_PORT=8080 /workspace/minicpm-study-install/runtime/bin/start_study.sh
+```
+
+Your `ssh -p 34790 root@125.240.239.50 -L 8080:localhost:8080` tunnel then exposes the website at `http://localhost:8080`. Paste `/workspace/minicpm-study-install/runtime/run-settings.json` into study settings. With one visible GPU the generated settings choose `cuda:0` for Granite and index 0 for Whisper. `--skip-models` produces no native launcher/settings on a fresh installation; rerun without it to finish.
+
+## Setup from an existing checkout
+
 Clone `minicpm_study/` and the reference `minicpm_tool/` as adjacent repositories on the server, following the [root README](../README.md). Run the commands below from `minicpm_study/`, which contains `tool_pipeline/`, `speech_contracts/` and `study_platform/`. Keep the checkouts in place: installation uses editable packages and launch scripts refer to these paths. Use `--reference /path/to/minicpm_tool` if the reference lives elsewhere.
 
 Requirements: Linux x86_64, Python 3.11 or 3.12 with `venv` support, an NVIDIA driver **555.42.02 or newer**, the **CUDA 12.5 toolkit** (including `nvcc`), network access to GitHub/PyPI/Hugging Face, and disk space for the full MiniCPM module layout, other models, Python CUDA libraries and build objects. The script checks actual GPU access. It does not install the driver or toolkit, change system CUDA alternatives, or start services during installation.

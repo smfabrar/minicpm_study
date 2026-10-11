@@ -211,3 +211,11 @@ def test_generated_native_and_study_scripts_have_valid_shell_and_frozen_settings
     assert "study-venv/bin/speech-study" in study_script
     assert "activate.sh" not in study_script
     assert "LD_LIBRARY_PATH" not in study_script
+    study_binary = config.root / "study-venv/bin/speech-study"
+    study_binary.parent.mkdir(parents=True)
+    study_binary.write_text(f'#!{sys.executable}\nimport json, sys\nprint(json.dumps(sys.argv[1:]))\n')
+    study_binary.chmod(0o755)
+    launched = subprocess.run(["bash", config.root / "bin/start_study.sh"],
+                              env=dict(os.environ, SPEECH_STUDY_PORT="8080"),
+                              capture_output=True, text=True, check=True)
+    assert json.loads(launched.stdout) == ["--data", str(config.root / "data/platform"), "--port", "8080"]

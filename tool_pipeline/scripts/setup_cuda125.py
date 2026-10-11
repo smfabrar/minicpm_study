@@ -284,7 +284,7 @@ class LaunchFiles:
             path.write_text("#!/usr/bin/env bash\nset -euo pipefail\n"
                             f"export SPEECH_STUDY_FRONTEND={shlex.quote(str(frontend))}\n"
                             'export SPEECH_RUNTIME_URL="${SPEECH_RUNTIME_URL:-http://127.0.0.1:8766}"\n'
-                            f"exec {study_command}\n")
+                            f'exec {study_command} --port "${{SPEECH_STUDY_PORT:-8765}}"\n')
             path.chmod(0o755)
         if models is None:
             return

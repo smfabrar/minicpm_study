@@ -14,7 +14,18 @@ The website submits one audio recording and its configuration to the pipeline ov
 
 ## Clone and prepare the reference
 
-Keep the existing reference package alongside this repository:
+For an Ubuntu/Debian GPU server, the downloadable installer performs the full setup:
+
+```bash
+wget -O install.sh https://raw.githubusercontent.com/smfabrar/minicpm_study/main/install.sh
+bash install.sh --prefix /workspace/minicpm-study-install
+```
+
+It downloads this project and the pinned reference, installs build/audio prerequisites, prepares Python 3.11/3.12 and Node 22, installs CUDA 12.5 in a local prefix when needed, builds native MiniCPM, downloads the models and builds the website. This supports the reported Python 3.12 / CUDA 13 server by preparing a separate CUDA 12.5 toolkit. An NVIDIA driver must already be installed; apt needs root or sudo. Model memory fit and end-to-end speech still need server validation.
+
+`bash install.sh --dry-run` previews the steps. Use `--runtime-only` to skip the website, `--skip-models` to defer weights, or `--ref <commit>` to select a study version. It prints separate service launch commands at completion. For your existing port-8080 tunnel, run the website launcher with `SPEECH_STUDY_PORT=8080`. See [the server guide](tool_pipeline/CUDA125_SETUP.md) for launch commands.
+
+For manual installation, keep the existing reference package alongside this repository:
 
 ```bash
 git clone git@github.com:smfabrar/minicpm_study.git
