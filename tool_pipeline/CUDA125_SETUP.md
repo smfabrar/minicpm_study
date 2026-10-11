@@ -13,6 +13,23 @@ This includes the website, native build and model downloads by default. It insta
 
 Options: `--dry-run`, `--runtime-only`, `--skip-models`, `--jobs N`, `--cuda-home PATH`, and `--ref REF`. `SPEECH_STUDY_REPOSITORY` selects an alternate authenticated Git clone URL if required. The public wget command requires this script to have been pushed to the repository and the raw URL to be accessible.
 
+The full installer checks for **30 GiB free on the installation filesystem before making changes** (10 GiB when skipping weights). Plan roughly 50–60 GB total for the toolkit, Python packages, models, native build and room for recordings. This is a planning estimate; actual use varies. `SPEECH_INSTALL_MIN_FREE_GIB` can adjust the floor for a known existing installation. Pip caching is disabled, and `TMPDIR` points inside the installation root so downloads do not unexpectedly fill a different temporary filesystem.
+
+If installation fails with `[Errno 28] No space left on device`, inspect the actual destination:
+
+```bash
+df -h / /workspace /tmp
+df -i /workspace
+```
+
+A full 10 GB `/workspace` volume is insufficient for this stack even if `/` still has space. Enlarge the workspace volume or choose a larger mounted volume for `--prefix`. After space is available, rerun with the same prefix to reuse completed dependencies/toolkit downloads:
+
+```bash
+PIP_NO_CACHE_DIR=1 bash install.sh --prefix /workspace/minicpm-study-install
+```
+
+Existing study data and installed environments are preserved. Disabling caching does not free the packages or model files already stored on the full volume.
+
 After installation, use separate terminals:
 
 ```bash

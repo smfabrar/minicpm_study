@@ -332,13 +332,15 @@ def setup(config: SetupConfiguration) -> None:
         dry_run(config)
         return
     environment = dict(os.environ)
-    environment.update(CUDA_HOME=str(config.cuda_home), HF_HOME=str(config.root / "models/cache"))
+    environment.update(CUDA_HOME=str(config.cuda_home), HF_HOME=str(config.root / "models/cache"),
+                       PIP_NO_CACHE_DIR="1", TMPDIR=str(config.root / "tmp"))
     environment["PATH"] = f"{config.cuda_home / 'bin'}:{environment.get('PATH', '')}"
     runner = CommandRunner(environment)
     preflight = HostPreflight(config, runner)
     host = preflight.verify()
     preflight.prerequisites()
     config.root.mkdir(parents=True, exist_ok=True)
+    (config.root / "tmp").mkdir(exist_ok=True)
     EnvironmentInstaller(config, runner).install()
     probe = runner.support(config, "probe")
     supported = runner.run([config.cuda_home / "bin/nvcc", "--list-gpu-code"], capture=True)

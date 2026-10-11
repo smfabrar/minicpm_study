@@ -45,7 +45,7 @@ def test_bootstrap_download_dispatch_cuda13_and_safe_rerun(tmp_path):
     (fixture / "tool_pipeline").mkdir()
     (fixture / "tool_pipeline/setup_cuda125.sh").write_text(
         f'#!/usr/bin/env bash\n"$SPEECH_SETUP_PYTHON" -c '
-        + shlex.quote('import json, os, sys; open(os.environ["BOOTSTRAP_CALL"], "w").write(json.dumps(sys.argv[1:]))')
+        + shlex.quote('import json, os, sys; open(os.environ["BOOTSTRAP_CALL"], "w").write(json.dumps({"args": sys.argv[1:], "tmpdir": os.environ["TMPDIR"], "no_cache": os.environ["PIP_NO_CACHE_DIR"]}))')
         + ' "$@"\n'
     )
     real_git = shutil.which("git")
@@ -58,6 +58,7 @@ def test_bootstrap_download_dispatch_cuda13_and_safe_rerun(tmp_path):
     tools = tmp_path / "tools"
     tools.mkdir()
     executable(tools / "uname", '#!/bin/sh\ncase "$1" in -s) echo Linux;; -m) echo x86_64;; esac\n')
+    executable(tools / "df", '#!/bin/sh\necho "Filesystem 1024-blocks Used Available Capacity Mounted on"\necho "/fixture 62914560 10485760 52428800 17% /fixture"\n')
     executable(tools / "nvidia-smi", '#!/bin/sh\necho "CPU fixture: NVIDIA driver 580, not a GPU measurement"\n')
     executable(tools / "apt-get", '#!/bin/sh\nexit 0\n')
     executable(tools / "sudo", '#!/bin/sh\nexec "$@"\n')
@@ -108,7 +109,10 @@ compiler.chmod(0o755)
     command = ["bash", ROOT / "install.sh", "--prefix", prefix, "--skip-models"]
     result = subprocess.run(command, env=environment, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
-    arguments = json.loads(call.read_text())
+    recorded = json.loads(call.read_text())
+    arguments = recorded["args"]
+    assert recorded["tmpdir"] == str(prefix / "tmp")
+    assert recorded["no_cache"] == "1"
     assert "--with-platform" in arguments and "--skip-models" in arguments
     assert arguments[arguments.index("--cuda-home") + 1] == str(prefix / "cuda-12.5")
     assert arguments[arguments.index("--root") + 1] == str(prefix / "runtime")
@@ -125,3 +129,19 @@ compiler.chmod(0o755)
     assert rejected.returncode != 0
     assert "Save tracked local changes" in rejected.stderr
     assert changed.read_text().endswith("# local user edit\n")
+
+
+def test_small_install_volume_is_rejected_before_downloads_or_system_changes(tmp_path):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    executable(tools / "uname", '#!/bin/sh\ncase "$1" in -s) echo Linux;; -m) echo x86_64;; esac\n')
+    executable(tools / "df", '#!/bin/sh\necho "Filesystem 1024-blocks Used Available Capacity Mounted on"\necho "/small 10485760 10485610 150 100% /workspace"\n')
+    prefix = tmp_path / "must not be created"
+    result = subprocess.run(["bash", ROOT / "install.sh", "--prefix", prefix],
+                            env=dict(os.environ, PATH=f"{tools}:{os.environ['PATH']}",
+                                     SPEECH_INSTALL_MIN_FREE_GIB="30"),
+                            capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Not enough disk space" in result.stderr
+    assert "30 GiB" in result.stdout
+    assert not prefix.exists()

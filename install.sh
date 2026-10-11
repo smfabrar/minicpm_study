@@ -13,6 +13,7 @@ skip_models=false
 dry_run=false
 build_jobs=2
 cuda_home=""
+minimum_free_gib="${SPEECH_INSTALL_MIN_FREE_GIB:-}"
 
 usage() {
     cat <<'HELP'
@@ -32,6 +33,7 @@ An NVIDIA driver must already be installed. CUDA 12.5 is installed locally if ne
 
 SPEECH_STUDY_REPOSITORY can override the Git clone URL for a private repository.
 SPEECH_SETUP_PYTHON can select an existing Python 3.11/3.12 interpreter.
+SPEECH_INSTALL_MIN_FREE_GIB overrides the free-space floor (30 GiB full, 10 GiB without models).
 HELP
 }
 
@@ -57,11 +59,18 @@ while (($#)); do
 done
 [[ "$build_jobs" =~ ^[1-9][0-9]*$ ]] || die '--jobs must be a positive integer'
 [[ -n "$install_root" && -n "$study_ref" && "$study_ref" != -* ]] || die 'Invalid prefix or ref'
+if [[ -z "$minimum_free_gib" ]]; then
+    minimum_free_gib=30
+    "$skip_models" && minimum_free_gib=10
+fi
+[[ "$minimum_free_gib" =~ ^[1-9][0-9]{0,3}$ ]] \
+    || die 'SPEECH_INSTALL_MIN_FREE_GIB must be an integer between 1 and 9999'
 
 if "$dry_run"; then
     printf 'Dry run: no changes. Installation root: %s\n' "$install_root"
     printf '%s\n' \
         '1. Check Linux x86_64 and the existing NVIDIA driver.' \
+        "   Check at least $minimum_free_gib GiB free on the installation filesystem." \
         '2. Install apt build/audio/download prerequisites.' \
         "3. Download study ref $study_ref and the pinned minicpm_tool reference." \
         '4. Reuse Python 3.11/3.12, or install Python 3.12 locally.' \
@@ -73,6 +82,14 @@ if "$dry_run"; then
 fi
 
 [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]] || die 'Requires Linux x86_64'
+space_probe="$install_root"
+while [[ ! -e "$space_probe" ]]; do space_probe="$(dirname -- "$space_probe")"; done
+available_kib="$(df -Pk -- "$space_probe" | awk 'NR == 2 {print $4}')"
+[[ "$available_kib" =~ ^[0-9]+$ ]] || die "Cannot check disk space for $install_root"
+printf 'Installation filesystem: %s GiB free; requested floor: %s GiB\n' \
+    "$((available_kib / 1024 / 1024))" "$minimum_free_gib"
+((available_kib >= minimum_free_gib * 1024 * 1024)) \
+    || die "Not enough disk space for $install_root. Enlarge this volume or select a larger --prefix filesystem."
 command -v nvidia-smi >/dev/null || die 'An NVIDIA driver and nvidia-smi must already be available'
 nvidia-smi
 command -v apt-get >/dev/null || die 'This installer supports Ubuntu/Debian with apt-get'
@@ -87,7 +104,9 @@ fi
     ninja-build pkg-config espeak-ng libsndfile1 python3-venv
 mkdir -p "$install_root"
 install_root="$(cd -- "$install_root" && pwd)"
-mkdir -p "$install_root/cache" "$install_root/bin"
+mkdir -p "$install_root/cache" "$install_root/bin" "$install_root/tmp"
+export TMPDIR="$install_root/tmp"
+export PIP_NO_CACHE_DIR=1
 
 download() {
     curl --fail --location --retry 3 --output "$2.part" "$1"

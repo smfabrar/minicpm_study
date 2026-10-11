@@ -23,6 +23,8 @@ bash install.sh --prefix /workspace/minicpm-study-install
 
 It downloads this project and the pinned reference, installs build/audio prerequisites, prepares Python 3.11/3.12 and Node 22, installs CUDA 12.5 in a local prefix when needed, builds native MiniCPM, downloads the models and builds the website. This supports the reported Python 3.12 / CUDA 13 server by preparing a separate CUDA 12.5 toolkit. An NVIDIA driver must already be installed; apt needs root or sudo. Model memory fit and end-to-end speech still need server validation.
 
+Use an installation volume with roughly 50–60 GB total capacity. The installer checks for 30 GiB free before a full setup, or 10 GiB with `--skip-models`; these are planning floors, not exact size predictions. Free space on `/` does not help an installation on a separate full `/workspace` volume. Pip download caching is disabled and temporary downloads use the installation volume. For a repeat installation with weights already present, the free-space floor can be adjusted through `SPEECH_INSTALL_MIN_FREE_GIB`.
+
 `bash install.sh --dry-run` previews the steps. Use `--runtime-only` to skip the website, `--skip-models` to defer weights, or `--ref <commit>` to select a study version. It prints separate service launch commands at completion. For your existing port-8080 tunnel, run the website launcher with `SPEECH_STUDY_PORT=8080`. See [the server guide](tool_pipeline/CUDA125_SETUP.md) for launch commands.
 
 For manual installation, keep the existing reference package alongside this repository:
