@@ -1,0 +1,10 @@
+# Python model stack: CUDA 12.4 wheels, native MiniCPM built with CUDA 12.5.
+torch==2.6.0+cu124
+torchaudio==2.6.0+cu124
+transformers>=4.54,<5
+numpy>=2.2,<3
+ctranslate2>=4.5,<5
+kokoro==0.9.4
+websockets>=16,<18
+huggingface-hub>=0.34,<1
+spacy>=3.8,<3.9

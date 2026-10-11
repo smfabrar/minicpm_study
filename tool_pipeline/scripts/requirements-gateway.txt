@@ -1,0 +1,13 @@
+# The pinned Demo's gateway and remote HTTP worker do not load its HF backend.
+# Installing its full requirements.txt would downgrade Granite's Transformers.
+fastapi>=0.128,<1
+uvicorn>=0.40,<1
+httpx>=0.28,<1
+pydantic>=2.11,<3
+python-multipart>=0.0.18
+markdown>=3.6
+Pygments>=2.18
+PyYAML>=6
+librosa>=0.10.2
+soundfile>=0.12
+tqdm>=4.67
