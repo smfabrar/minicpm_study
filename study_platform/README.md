@@ -61,6 +61,10 @@ Accuracy uses frozen evaluation-split tool-required attempts. Failed, silent, an
 
 For GPU question preparation, add `"tts_device": "cuda:0"` to an editable study's settings JSON and save before queuing preparation. Existing settings without this field use CPU. Changing the device affects newly queued synthesis jobs and their cache entries; **Prepare missing inputs** keeps already attached recordings. Test with a new case, or clone a frozen study before editing. Audio provenance records the actual synthesis device. The study backend continues to submit preparation jobs to the independent pipeline service; it does not load Kokoro or CUDA.
 
+Use the **Reference voice WAV on the pipeline server** field to set the path. Click **Save configuration** and wait for **Configuration saved and verified** before reloading or running a case. The form displays persistent save errors and verifies the server's stored values with a fresh read. Advanced settings JSON rejects duplicate keys. Frozen studies require cloning before editing.
+
+After updating source, rebuild the installed website with `bash study_platform/update_frontend.sh /workspace/minicpm-study-install/runtime` and reload the browser. The helper finds the bootstrap's Node installation, installs frontend dependencies, runs settings checks, and builds the static assets. Frontend code changes require this build step; the Python runtime dependency updater does not build the website.
+
 ## Code boundaries
 
 ```text

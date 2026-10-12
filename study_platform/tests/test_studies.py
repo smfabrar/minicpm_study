@@ -61,6 +61,19 @@ class StudyIntegrationTests(unittest.TestCase):
         self.assertEqual(result.json()['settings']['seed'], 99)
         self.assertEqual(self.client.put(self.base, json={'settings': {'unknown': 1}}).status_code, 400)
 
+    def test_reference_settings_persist_per_study_after_backend_restart(self):
+        other = self.client.post('/api/studies', json={'name': 'Second study'}).json()
+        references = {self.study['id']: '/server/first.wav', other['id']: '/server/second.wav'}
+        for study_id, reference in references.items():
+            response = self.client.put('/api/studies/' + study_id, json={'settings': {'reference_audio': reference}})
+            self.assertEqual(response.status_code, 200, response.text)
+        restarted = TestClient(create_app(Path(self.directory.name)))
+        for study_id, reference in references.items():
+            self.assertEqual(restarted.get('/api/studies/' + study_id).json()['settings']['reference_audio'], reference)
+        item = self.prepared_case()
+        for run in self.start(item, ['B0', 'B1', 'B2']):
+            self.assertEqual(run['request']['settings']['reference_audio'], '/server/first.wav')
+
     def test_freeze_checks_audio_and_locks_cases(self):
         self.case()
         self.assertEqual(self.client.post(self.base + '/freeze').status_code, 400)

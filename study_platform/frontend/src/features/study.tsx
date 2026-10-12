@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Lock, Copy, Play, Download, ArrowUpRight } from 'lucide-react';
@@ -10,10 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
-import { FieldGroup } from '@/components/ui/field';
-import { ErrorNotice, FormField, Status } from '@/components/shared';
+import { ErrorNotice, Status } from '@/components/shared';
+import { StudySettings } from './study-settings';
 import { Cases } from './cases';
 import { Tools } from './tools';
 export function StudyPage() {
@@ -115,36 +112,6 @@ function Runs({ study }: {
           </TableRow>)}
         </TableBody>
       </Table> : <p className="py-8 text-center text-muted-foreground">No runs yet. Prepare audio in Cases, then run a condition.</p>}
-    </CardContent>
-  </Card>;
-}
-function StudySettings({ study }: {
-  study: Study;
-}) {
-  const [settings, setSettings] = useState(JSON.stringify(study.settings, null, 2));
-  const [name, setName] = useState(study.name);
-  const [description, setDescription] = useState(study.description);
-  const action = useAction();
-  return <Card>
-    <CardHeader>
-      <CardTitle>Reproducible configuration</CardTitle>
-      <CardDescription>Set the native endpoint, reference voice WAV, CUDA devices, model revisions, replay pacing, and time limits before freezing. Reference audio paths refer to the GPU runtime host.</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <form onSubmit={event => { event.preventDefault(); action.mutate(() => api.request(`/studies/${study.id}`, 'PUT', { name, description, settings: JSON.parse(settings) })); }}>
-        <FieldGroup>
-          <FormField label="Study name">
-            <Input disabled={study.status === 'frozen'} value={name} onChange={e => setName(e.target.value)} />
-          </FormField>
-          <FormField label="Description">
-            <Textarea disabled={study.status === 'frozen'} value={description} onChange={e => setDescription(e.target.value)} />
-          </FormField>
-          <FormField label="Runtime settings (JSON)">
-            <Textarea disabled={study.status === 'frozen'} className="min-h-[560px] font-mono text-sm" value={settings} onChange={e => setSettings(e.target.value)} />
-          </FormField>
-          {study.status === 'draft' && <Button className="self-start" disabled={action.isPending}>Save configuration</Button>}
-        </FieldGroup>
-      </form>
     </CardContent>
   </Card>;
 }
