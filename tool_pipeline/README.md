@@ -4,6 +4,8 @@ An independently installable audio-in/audio-out inference package. It has no dep
 
 The study application submits audio and configuration once. This package owns replay, Whisper, Granite, tool validation/execution, context injection, native acknowledgements, output audio and telemetry. Kokoro synthesis and output transcription are separate jobs outside inference timing.
 
+A reference-audio error refers to the configuration saved in that run. The worker reports whether `reference_audio` is empty or its file is missing, including the checked path and runtime hostname for missing files. Inspect the failed run's **Request & provenance** settings; changing the study's settings affects newly created runs. The WAV must be accessible to the pipeline worker's host.
+
 ## Installation on the GPU server
 
 For Linux NVIDIA servers with CUDA 12.5, use the [setup script and launch guide](CUDA125_SETUP.md):

@@ -4,6 +4,7 @@ import asyncio
 import contextvars
 import json
 import re
+import socket
 import time
 from pathlib import Path
 
@@ -40,9 +41,18 @@ class NativeSession:
             raise RuntimeError(
                 "Native transport requires websockets. Install tool-pipeline[models] on the GPU server."
             ) from exc
+        if not self.settings.reference_audio.strip():
+            raise ValueError(
+                "This run has empty reference_audio. Set the reference WAV in Study > Settings, "
+                "save the configuration, and start a new run."
+            )
         reference = Path(self.settings.reference_audio)
         if not reference.is_file():
-            raise ValueError("Configure reference_audio as a WAV path on the GPU server")
+            raise ValueError(
+                f"reference_audio is not a file on runtime host {socket.gethostname()}: "
+                f"saved value {self.settings.reference_audio!r}, checked path {str(reference.absolute())!r}. "
+                "Set a WAV path accessible to the pipeline worker and start a new run."
+            )
         with self.trace.span("native.connection"):
             self.ws = await websockets.connect(
                 self.settings.native_url,

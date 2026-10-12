@@ -15,6 +15,26 @@ from speech_contracts import RunRequest
 
 
 class TransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reference_errors_distinguish_empty_settings_from_missing_files(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            for value in ('', '   ', str(output / 'missing voice.wav')):
+                with self.subTest(reference_audio=value):
+                    session = NativeSession(RunSettings(reference_audio=value), TraceRecorder(), output)
+                    with patch('websockets.connect') as connect:
+                        with self.assertRaises(ValueError) as error:
+                            await session.connect()
+                        connect.assert_not_called()
+                    message = str(error.exception)
+                    if not value.strip():
+                        self.assertIn('empty reference_audio', message)
+                        self.assertIn('start a new run', message)
+                    else:
+                        self.assertIn(repr(value), message)
+                        self.assertIn('runtime host', message)
+
     async def test_native_audio_and_context_acknowledgement(self):
         received = []
         async def fixture(ws):
