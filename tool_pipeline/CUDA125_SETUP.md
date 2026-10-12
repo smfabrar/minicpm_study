@@ -102,6 +102,7 @@ models/cache/                    Hugging Face weights
 models/model-revisions.json      frozen model commit IDs, reused on reruns
 activate.sh                      runtime environment and cuBLAS/cuDNN search paths
 bin/start_native.sh              native backend + official gateway/remote worker
+bin/restart_native.sh            stop this installation's native processes and start in background
 bin/start_runtime.sh             standalone pipeline HTTP service
 bin/start_study.sh               website, with --with-platform
 run-settings.json                model paths, revisions, patch hash, audio and devices
@@ -118,6 +119,14 @@ The script fetches exact native/Demo commits, applies the reference injection pa
 The Demo runs as a gateway and **remote backend worker**, so its Hugging Face inference dependencies are unnecessary. Its full requirements file pins Transformers 4.51, which conflicts with Granite. The script installs [the required gateway dependencies](scripts/requirements-gateway.txt) instead. It also installs Kokoro's English spaCy model during setup. Faster Whisper uses Torch's installed cuBLAS/cuDNN 9 libraries; `activate.sh` sets the library paths before process startup, following [Faster Whisper's GPU requirements](https://github.com/SYSTRAN/faster-whisper#gpu).
 
 ## Start and connect
+
+To restart only the native stack on an existing installation:
+
+```bash
+bash tool_pipeline/restart_native.sh /workspace/minicpm-study-install/runtime
+```
+
+The helper stops the native launcher, backend, gateway and worker belonging to that installation, including their child processes, then runs `start_native.sh` through nohup. The study and pipeline HTTP services keep running. It writes the launcher PID to `logs/native.pid`, moves the previous service log to `logs/native-service.log.previous`, and reports startup once the new launcher's manifest exists. This confirms service startup; a study run must still validate native model initialization. A concurrent restart of the same installation is rejected. New setups also generate `runtime/bin/restart_native.sh` with the installation root filled in.
 
 Run these in separate server terminals, replacing `.gpu` if you chose another root:
 

@@ -205,6 +205,9 @@ def test_generated_native_and_study_scripts_have_valid_shell_and_frozen_settings
         {"library_paths": ["/fixture/cublas/lib", "/fixture/cudnn/lib"], "devices": [{}]}, models)
     for path in (config.root / "bin").glob("*.sh"):
         subprocess.run(["bash", "-n", path], check=True)
+    restart_script = (config.root / "bin/restart_native.sh").read_text()
+    assert "restart_native.sh" in restart_script
+    assert shlex.quote(str(config.root)) in restart_script
     settings = json.loads((config.root / "run-settings.json").read_text())
     assert settings["granite_model"] == models["granite"]["path"]
     assert settings["granite_device"] == "cuda:0"

@@ -293,6 +293,11 @@ class LaunchFiles:
                        Path(models["native"]["path"]) / "MiniCPM-o-4_5-Q4_K_M.gguf",
                        "--patch", config.patch]
         self.script("start_native.sh", native_args, native=True)
+        restart = config.root / "bin/restart_native.sh"
+        restart.write_text("#!/usr/bin/env bash\nset -euo pipefail\nexec bash " + shlex.join([
+            str(PIPELINE_DIR / "restart_native.sh"), str(config.root),
+        ]) + "\n")
+        restart.chmod(0o755)
         settings = self.runner.support(config, "settings", "--models", json.dumps(models),
                                        "--demo", str(config.demo), "--patch", str(config.patch),
                                        "--device-count", str(len(probe["devices"])))
