@@ -147,4 +147,6 @@ Open `http://127.0.0.1:8765`. If the website runs locally instead, forward `8766
 
 Paste the generated `run-settings.json` into the study's **Settings → Runtime settings (JSON)** before preparing inputs or freezing the study. Granite/Whisper use device 1 when two or more GPUs are visible, otherwise device 0. Review native device placement and available memory before collecting a study; placement must match your machine and any `CUDA_VISIBLE_DEVICES` restriction. All model and reference-audio paths refer to the GPU server.
 
+Use the main GGUF's path inside the Hugging Face snapshot when launching native MiniCPM. Keep its filename and neighboring `tts/`, `audio/`, `vision/`, and `token2wav-gguf/` directories. Resolving that file's symlink into a hash-named `blobs/` file breaks companion-module discovery and can close a session during initialization. The Python launcher preserves this snapshot path.
+
 The manifest confirms source/build choices, imports, library loading and a small real Torch CUDA computation. It does **not** claim end-to-end model readiness or measured study latency. Validate one synthesized development question under B0, B1 and B2 on the server, listen to the saved speech, inspect the tool payload/ACK and telemetry, then run the full evaluation. Setup and compilation timing are not study measurements.

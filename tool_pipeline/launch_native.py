@@ -116,7 +116,12 @@ def main() -> None:
     parser.add_argument('--worker-port', type=int, default=9061)
     parser.add_argument('--internal-port', type=int, default=9062)
     args = parser.parse_args()
-    config = NativeConfiguration(**{key: value.resolve() if isinstance(value, Path) else value for key, value in vars(args).items()})
+    paths = vars(args)
+    for name, value in paths.items():
+        if isinstance(value, Path):
+            # HF snapshot files are symlinks; native modules live beside the snapshot path.
+            paths[name] = value.absolute() if name == 'model' else value.resolve()
+    config = NativeConfiguration(**paths)
     stack = NativeStack(config)
     try:
         stack.start()
