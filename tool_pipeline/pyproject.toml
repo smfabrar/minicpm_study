@@ -26,6 +26,7 @@ models = [
   "transformers>=4.54",
   "accelerate",
   "faster-whisper",
+  "av>=11,<19",
   "nvidia-ml-py",
 ]
 

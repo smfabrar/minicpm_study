@@ -118,6 +118,15 @@ The script fetches exact native/Demo commits, applies the reference injection pa
 
 The Demo runs as a gateway and **remote backend worker**, so its Hugging Face inference dependencies are unnecessary. Its full requirements file pins Transformers 4.51, which conflicts with Granite. The script installs [the required gateway dependencies](scripts/requirements-gateway.txt) instead. It also installs Kokoro's English spaCy model during setup. Faster Whisper uses Torch's installed cuBLAS/cuDNN 9 libraries; `activate.sh` sets the library paths before process startup, following [Faster Whisper's GPU requirements](https://github.com/SYSTRAN/faster-whisper#gpu).
 
+The model extra and installer constrain PyAV to `av>=11,<19`. Faster Whisper 1.2.1 calls `av.open` with `metadata_errors`, which PyAV 19 removed ([upstream issue](https://github.com/SYSTRAN/faster-whisper/issues/1589)). For an existing installation failing with that keyword error, run:
+
+```bash
+/workspace/minicpm-study-install/runtime/venv/bin/python -m pip install --no-cache-dir --only-binary=:all: 'av>=11,<19'
+/workspace/minicpm-study-install/runtime/venv/bin/python -m pip check
+```
+
+Create a new run after installation. Pipeline jobs run in fresh worker processes, so the next job loads the corrected decoder package. Run provenance includes the installed PyAV version. This dependency repair does not require rebuilding the native CUDA binary.
+
 ## Start and connect
 
 To restart only the native stack on an existing installation:
