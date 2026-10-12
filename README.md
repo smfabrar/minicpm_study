@@ -60,6 +60,8 @@ bash tool_pipeline/setup_cuda125.sh --install-system-deps --with-platform
 
 Follow the [CUDA server guide](tool_pipeline/CUDA125_SETUP.md) to launch services, configure run settings and connect through SSH. The setup checks are separate from study measurements.
 
+For dependency updates on an existing installation, fetch the new checkout and run `bash tool_pipeline/update_runtime.sh /workspace/minicpm-study-install/runtime`. The updater applies this repository's dependency configuration and checks audio decoding without rebuilding native CUDA or downloading models.
+
 ## Local website and code
 
 See [study_platform/README.md](study_platform/README.md) for local installation, the study workflow and analysis. See [tool_pipeline/README.md](tool_pipeline/README.md) for standalone inference and the module reading order. Shared contracts are described in [speech_contracts/README.md](speech_contracts/README.md).

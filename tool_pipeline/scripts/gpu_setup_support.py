@@ -5,6 +5,8 @@ import ctypes
 import hashlib
 import importlib.metadata
 import json
+import tempfile
+import wave
 from dataclasses import asdict
 from pathlib import Path
 
@@ -62,8 +64,28 @@ def verify_imports() -> dict:
     if ctranslate2.get_cuda_device_count() < 1:
         raise RuntimeError("CTranslate2 cannot access a CUDA device")
     return {"transformers": transformers.__version__, "ctranslate2": ctranslate2.__version__,
+            "audio_decoder": verify_audio_decoder(),
             "kokoro": importlib.metadata.version("kokoro"), "pipeline": str(Path(tool_pipeline.__file__).parent),
             "reference": str(Path(duplex_tools.__file__).parent)}
+
+
+def verify_audio_decoder() -> dict:
+    from faster_whisper.audio import decode_audio
+
+    # Use a temporary recording so verification cannot enter study data or downloads.
+    with tempfile.TemporaryDirectory(prefix="minicpm-audio-check-") as directory:
+        audio_path = Path(directory) / "check.wav"
+        with wave.open(str(audio_path), "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(16000)
+            audio.writeframes(bytes(3200))
+        decoded = decode_audio(str(audio_path), sampling_rate=16000)
+        if len(decoded) != 1600:
+            raise RuntimeError("Faster Whisper did not decode the verification WAV correctly")
+    return {"pyav": importlib.metadata.version("av"),
+            "faster_whisper": importlib.metadata.version("faster-whisper"),
+            "sample_rate": 16000, "sample_count": len(decoded)}
 
 
 def download_models(root: Path) -> dict:
@@ -114,14 +136,16 @@ def run_settings(models: dict, demo: Path, patch: Path, device_count: int) -> di
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=("probe", "verify", "download", "settings"))
+    parser.add_argument("operation", choices=("probe", "verify", "verify-audio", "download", "settings"))
     parser.add_argument("--root", type=Path)
     parser.add_argument("--models", type=json.loads)
     parser.add_argument("--demo", type=Path)
     parser.add_argument("--patch", type=Path)
     parser.add_argument("--device-count", type=int)
     args = parser.parse_args()
-    if args.operation == "download":
+    if args.operation == "verify-audio":
+        result = verify_audio_decoder()
+    elif args.operation == "download":
         if args.root is None:
             parser.error("download requires --root")
         args.root.mkdir(parents=True, exist_ok=True)

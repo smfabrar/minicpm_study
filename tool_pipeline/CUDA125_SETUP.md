@@ -121,11 +121,13 @@ The Demo runs as a gateway and **remote backend worker**, so its Hugging Face in
 The model extra and installer constrain PyAV to `av>=11,<19`. Faster Whisper 1.2.1 calls `av.open` with `metadata_errors`, which PyAV 19 removed ([upstream issue](https://github.com/SYSTRAN/faster-whisper/issues/1589)). For an existing installation failing with that keyword error, run:
 
 ```bash
-/workspace/minicpm-study-install/runtime/venv/bin/python -m pip install --no-cache-dir --only-binary=:all: 'av>=11,<19'
-/workspace/minicpm-study-install/runtime/venv/bin/python -m pip check
+cd /workspace/minicpm-study-install/minicpm_study
+git fetch origin main
+git checkout --detach FETCH_HEAD
+bash tool_pipeline/update_runtime.sh /workspace/minicpm-study-install/runtime
 ```
 
-Create a new run after installation. Pipeline jobs run in fresh worker processes, so the next job loads the corrected decoder package. Run provenance includes the installed PyAV version. This dependency repair does not require rebuilding the native CUDA binary.
+The updater applies the committed model dependencies and CUDA constraints, runs `pip check`, verifies Faster Whisper audio decoding with a temporary PCM WAV, and refreshes the resolved dependency list. It does not run the native build or model downloads. Fresh full installations also run the same decoder check. Create a new run after updating; pipeline jobs run in fresh worker processes, so the next job loads the corrected decoder package. Run provenance includes the installed PyAV version. For changes to code already loaded by a long-running API service, restart that service separately.
 
 ## Start and connect
 
