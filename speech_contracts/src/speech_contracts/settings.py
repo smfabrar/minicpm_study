@@ -1,4 +1,5 @@
 from dataclasses import dataclass, fields
+import re
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +27,7 @@ class RunSettings:
     voice: str = "af_heart"
     tts_speed: float = 1.0
     tts_revision: str = "main"
+    tts_device: str = "cpu"
 
     def __post_init__(self):
         for name, lower, upper in (("repetitions", 1, 20), ("oracle_delay_ms", 0, 60000),
@@ -46,6 +48,8 @@ class RunSettings:
             raise ValueError("Paced must be a boolean")
         if self.whisper_device not in {"cpu", "cuda", "auto"}:
             raise ValueError("Whisper device must be cpu, cuda or auto")
+        if not re.fullmatch(r"cpu|cuda(?::[0-9]+)?", self.tts_device):
+            raise ValueError("TTS device must be cpu, cuda or cuda:<index>")
         if not self.voice or "/" in self.voice or "\\" in self.voice:
             raise ValueError("Voice must be a Kokoro voice identifier")
 

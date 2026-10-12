@@ -56,6 +56,9 @@ class SynthesisRequest:
         import json
         identity = [self.question, self.settings.voice, self.settings.tts_speed,
                     self.settings.tts_revision, "Kokoro-82M-v1.0"]
+        # Keep existing CPU cache entries; GPU generation has a separate identity.
+        if self.settings.tts_device != "cpu":
+            identity.append(self.settings.tts_device)
         return hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode()).hexdigest()
 
     def to_payload(self) -> dict:

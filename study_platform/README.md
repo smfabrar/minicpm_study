@@ -59,6 +59,8 @@ Both projects depend on the small [speech_contracts](../speech_contracts/README.
 
 Accuracy uses frozen evaluation-split tool-required attempts. Failed, silent, and unreviewed attempts stay in its denominator; development runs are excluded. No-tool unnecessary calls are reported separately. Latency and memory summaries use frozen evaluation attempts and should be compared only under matching pacing and configurations.
 
+For GPU question preparation, add `"tts_device": "cuda:0"` to an editable study's settings JSON and save before queuing preparation. Existing settings without this field use CPU. Changing the device affects newly queued synthesis jobs and their cache entries; **Prepare missing inputs** keeps already attached recordings. Test with a new case, or clone a frozen study before editing. Audio provenance records the actual synthesis device. The study backend continues to submit preparation jobs to the independent pipeline service; it does not load Kokoro or CUDA.
+
 ## Code boundaries
 
 ```text

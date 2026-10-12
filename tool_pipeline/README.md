@@ -28,6 +28,8 @@ python -m pip install -e ../../minicpm_tool
 
 Install `espeak-ng` for Kokoro English synthesis. Granite and Whisper default to GPU 1. For a one-GPU server use `granite_device: "cuda:0"` and `whisper_device_index: 0`, with enough remaining memory beside MiniCPM. Plain `pip install -e .` installs only service/transport dependencies; `.[models]` installs model dependencies.
 
+Set `tts_device: "cuda:0"` in the study settings to generate question audio with Kokoro on GPU 0. Supported values are `cpu`, `cuda` (the current CUDA device), and `cuda:<index>`. Existing settings without this field keep CPU synthesis; the GPU installer generates an explicit CUDA setting. A requested unavailable GPU fails the job instead of silently using CPU. Model execution uses float32; text processing, resampling and file storage remain on CPU. Preparation traces include device setup, synchronized model loading and synthesis, and the actual device is saved in audio provenance. GPU synthesis has a separate cache identity; previously attached recordings remain unchanged.
+
 ## Native MiniCPM stack
 
 Prepare the reference's pinned [live duplex setup](https://github.com/smfabrar/minicpm_tool/blob/f3e7cdc08cdf49c50414f405f31fc0eee9bca105/docs/live_duplex_protocol.md) and [setup notebook](https://github.com/smfabrar/minicpm_tool/blob/f3e7cdc08cdf49c50414f405f31fc0eee9bca105/notebooks/kaggle_live_duplex.ipynb), or build the same sources manually:

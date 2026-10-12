@@ -106,6 +106,7 @@ def run_settings(models: dict, demo: Path, patch: Path, device_count: int) -> di
         granite_device=f"cuda:{sidecar_device}", whisper_device_index=sidecar_device,
         whisper_model=models["whisper"]["path"], granite_model=models["granite"]["path"],
         granite_revision=models["granite"]["revision"], tts_revision=models["tts"]["revision"],
+        tts_device=f"cuda:{sidecar_device}",
         reference_audio=str(demo / "assets/ref_audio/ref_en_dlc_1.wav"),
         patch_sha256=hashlib.sha256(patch.read_bytes()).hexdigest(),
     ))

@@ -52,11 +52,12 @@ class StudyIntegrationTests(unittest.TestCase):
         return response.json()
 
     def test_partial_settings_preserve_gpu_configuration(self):
-        self.client.put(self.base, json={'settings': {'reference_audio': '/server/voice.wav', 'granite_device': 'cuda:0'}})
+        self.client.put(self.base, json={'settings': {'reference_audio': '/server/voice.wav', 'granite_device': 'cuda:0', 'tts_device': 'cuda:0'}})
         result = self.client.put(self.base, json={'settings': {'seed': 99}})
         self.assertEqual(result.status_code, 200)
         self.assertEqual(result.json()['settings']['reference_audio'], '/server/voice.wav')
         self.assertEqual(result.json()['settings']['granite_device'], 'cuda:0')
+        self.assertEqual(result.json()['settings']['tts_device'], 'cuda:0')
         self.assertEqual(result.json()['settings']['seed'], 99)
         self.assertEqual(self.client.put(self.base, json={'settings': {'unknown': 1}}).status_code, 400)
 

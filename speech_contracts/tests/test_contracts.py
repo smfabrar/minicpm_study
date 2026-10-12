@@ -31,6 +31,26 @@ def test_function_schema_contains_one_required_string_argument():
     assert parameters['additionalProperties'] is False
 
 
+@pytest.mark.parametrize('device', ['cpu', 'cuda', 'cuda:0', 'cuda:1'])
+def test_tts_device_survives_serialization(device):
+    request = SynthesisRequest('Hello', RunSettings(tts_device=device))
+    assert RunSettings.from_dict(request.to_payload()['settings']).tts_device == device
+
+
+@pytest.mark.parametrize('device', ['auto', 'mps', 'cuda:-1', 'cuda:', 'cuda:0x', '', None])
+def test_tts_device_rejects_invalid_values(device):
+    with pytest.raises(ValueError, match='[Tt][Tt][Ss]|tts_device'):
+        RunSettings(tts_device=device)
+
+
+def test_gpu_synthesis_does_not_reuse_cpu_cache():
+    cpu = SynthesisRequest('Hello')
+    gpu = SynthesisRequest('Hello', RunSettings(tts_device='cuda:0'))
+    assert cpu.settings.tts_device == 'cpu'
+    assert cpu.cache_key() != gpu.cache_key()
+    assert gpu.cache_key() != SynthesisRequest('Hello', RunSettings(tts_device='cuda:1')).cache_key()
+
+
 def test_contract_distribution_has_no_runtime_dependencies():
     root = Path(__file__).resolve().parents[1]
     project = tomllib.loads((root / 'pyproject.toml').read_text())['project']
