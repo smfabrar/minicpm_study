@@ -153,3 +153,37 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
             injection = contexts.index(True)
             self.assertEqual(sum(contexts), 1)
             self.assertEqual(len(contexts) - injection - 1, 1)
+
+    async def test_reference_snapshot_is_used_if_original_changes_while_waiting(self):
+        from unittest.mock import patch
+        from tool_pipeline.audio import read_pcm
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'run'
+            reference = Path(directory) / 'voice.wav'
+            write_pcm(reference, bytes(32000))
+            original = reference.read_bytes()
+            class Wire:
+                async def send(self, raw):
+                    message = json.loads(raw)
+                    self.initialization = message
+                async def close(self):
+                    pass
+            wire = Wire()
+            async def connect(*args, **kwargs):
+                return wire
+            session = NativeSession(RunSettings(reference_audio=str(reference)), TraceRecorder(), output)
+            async def control(expected, timeout):
+                if expected == 'session.queue_done':
+                    write_pcm(reference, b'\x01\x00' * 16000)
+                return {'session_id': 'fixture'}
+            async def reader():
+                await asyncio.sleep(60)
+            with patch('websockets.connect', connect), patch.object(session, '_wait_control', control), patch.object(session, '_read', reader):
+                await session.connect()
+                session.reader.cancel()
+                await asyncio.gather(session.reader, return_exceptions=True)
+            assert (output / 'reference.wav').read_bytes() == original
+            voice = wire.initialization['payload']['voice']['ref_audio_base64']
+            assert voice == float32_payload(read_pcm(output / 'reference.wav'))
+            assert voice != float32_payload(read_pcm(reference))

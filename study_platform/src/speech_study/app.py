@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import runs, studies, system
+from .api import runs, studies, system, tool_library
 from .container import ApplicationServices
 from .domain.errors import ConflictError, NotFoundError, RuntimeConnectionError
 
@@ -42,6 +42,7 @@ def create_app(data_root: Path | None = None, frontend: Path | None = None) -> F
     app.include_router(studies.router)
     app.include_router(runs.router)
     app.include_router(system.router)
+    app.include_router(tool_library.router)
     directory = frontend or Path(os.environ.get("SPEECH_STUDY_FRONTEND", str(Path(__file__).resolve().parents[2] / "frontend" / "dist")))
     if (directory / "assets").is_dir():
         app.mount("/assets", StaticFiles(directory=directory / "assets"), name="assets")

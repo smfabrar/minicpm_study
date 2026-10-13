@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Lock, Copy, Play, Download, ArrowUpRight } from 'lucide-react';
@@ -9,12 +10,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { ErrorNotice, Status } from '@/components/shared';
 import { StudySettings } from './study-settings';
 import { Cases } from './cases';
 import { Tools } from './tools';
 export function StudyPage() {
   const { id = '' } = useParams();
+  const [deleting, setDeleting] = useState(false);
   const action = useAction();
   const navigate = useNavigate();
   const query = useQuery({ queryKey: ['study', id], queryFn: () => api.study(id), refetchInterval: 4000 });
@@ -39,11 +42,15 @@ export function StudyPage() {
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
+        <Button asChild variant="outline"><a href={`/api/studies/${id}/export`}><Download className="size-4" /> Export ZIP</a></Button>
+        <Button asChild variant="outline"><Link to={`/operations?study_id=${id}`}>Operations</Link></Button>
+        <Button variant="outline" onClick={() => setDeleting(true)}>Delete study</Button>
         <Button variant="outline" disabled={action.isPending} onClick={() => action.mutate(async () => { const clone = await api.request<Study>(`/studies/${id}/clone`, 'POST'); navigate(`/studies/${clone.id}`); })}><Copy className="size-4" /> Clone</Button>
         {study.status === 'draft' ? <Button disabled={action.isPending || !study.cases.length} onClick={() => action.mutate(() => api.request(`/studies/${id}/freeze`, 'POST'))}><Lock className="size-4" /> Freeze study</Button> : <Button disabled={action.isPending} onClick={() => action.mutate(() => api.request(`/studies/${id}/matrix`, 'POST'))}><Play className="size-4" /> Run full matrix</Button>}
       </div>
     </div>
     <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">B0 · Native speech <span className="mx-4">/</span> B1 · Whisper → Granite → tools → native injection <span className="mx-4">/</span> B2 · Oracle → native injection</div>
+    <Dialog open={deleting} onOpenChange={setDeleting}><DialogContent><DialogHeader><DialogTitle>Move {study.name} to Trash?</DialogTitle><DialogDescription>Recordings, metadata and run history will be retained. Restore the study from the dashboard. Finish this study's queued work first.</DialogDescription></DialogHeader><div className="flex gap-2"><Button variant="outline" onClick={() => setDeleting(false)}>Cancel</Button><Button variant="destructive" disabled={action.isPending} onClick={() => action.mutate(async () => { await api.request(`/studies/${id}`, 'DELETE'); navigate('/'); })}>Move to Trash</Button></div></DialogContent></Dialog>
     <Tabs defaultValue="cases">
       <TabsList className="mb-5">
         <TabsTrigger value="cases">Cases ({study.cases.length})</TabsTrigger>

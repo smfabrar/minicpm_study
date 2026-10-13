@@ -87,7 +87,8 @@ def test_real_worker_process_uses_standalone_package_and_retains_failure(tmp_pat
             time.sleep(0.05)
             job = jobs.get(job['id'])
         assert job['status'] == 'failed', job
-        assert 'Configure reference_audio' in job['error']
+        assert 'reference_audio is not a file' in job['error']
+        assert str(tmp_path / 'missing-reference.wav') in job['error']
         assert {'telemetry.json', 'result.json', 'worker.log'} <= set(job['artifacts'])
         assert job['result']['condition'] == 'B0'
     finally:

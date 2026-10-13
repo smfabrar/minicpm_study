@@ -5,7 +5,7 @@ import sqlite3
 from dataclasses import asdict
 
 from ..domain.errors import NotFoundError
-from ..domain.models import Case, Condition, Review, Run, RunStatus, Study, StudyStatus, ToolDefinition
+from ..domain.models import Case, Condition, Review, Run, RunStatus, Study, StudyStatus, ToolDefinition, LibraryTool
 from speech_contracts import RunSettings
 
 
@@ -17,14 +17,18 @@ class StudyRepository:
     def __init__(self, connection: sqlite3.Connection):
         self.connection = connection
 
-    def get(self, identifier: str) -> Study:
+    def get(self, identifier: str, *, include_deleted=False) -> Study:
         row = self.connection.execute("SELECT payload FROM studies WHERE id=?", (identifier,)).fetchone()
         if row is None:
             raise NotFoundError("Study not found")
-        return self._decode(row)
+        study = self._decode(row)
+        if study.deleted_at and not include_deleted:
+            raise NotFoundError("Study is in Trash; restore it first")
+        return study
 
-    def list(self) -> list[Study]:
-        return [self._decode(row) for row in self.connection.execute("SELECT payload FROM studies ORDER BY rowid DESC")]
+    def list(self, *, deleted=False) -> list[Study]:
+        studies = [self._decode(row) for row in self.connection.execute("SELECT payload FROM studies ORDER BY rowid DESC")]
+        return [study for study in studies if bool(study.deleted_at) == deleted]
 
     def save(self, entity: Study) -> None:
         self.connection.execute("INSERT INTO studies VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", (entity.id, encode(entity)))
@@ -105,3 +109,25 @@ class RunRepository:
         if data.get("review"):
             data["review"] = Review(**data["review"])
         return Run(**data)
+
+
+class LibraryToolRepository:
+    def __init__(self, connection: sqlite3.Connection):
+        self.connection = connection
+
+    def get(self, identifier: str) -> LibraryTool:
+        row = self.connection.execute("SELECT payload FROM tool_library WHERE id=?", (identifier,)).fetchone()
+        if row is None:
+            raise NotFoundError("Library tool not found")
+        return LibraryTool(**json.loads(row["payload"]))
+
+    def list(self) -> list[LibraryTool]:
+        return [LibraryTool(**json.loads(row["payload"])) for row in
+                self.connection.execute("SELECT payload FROM tool_library ORDER BY rowid DESC")]
+
+    def save(self, entity: LibraryTool) -> None:
+        self.connection.execute("INSERT INTO tool_library VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", (entity.id, encode(entity)))
+
+    def delete(self, identifier: str) -> None:
+        self.get(identifier)
+        self.connection.execute("DELETE FROM tool_library WHERE id=?", (identifier,))

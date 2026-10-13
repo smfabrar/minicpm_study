@@ -3,12 +3,23 @@
 import argparse
 import asyncio
 import json
+import signal
 import traceback
 from pathlib import Path
 
 from speech_contracts import RunRequest, RunSettings
 
 from ..pipeline import InferencePipeline
+
+
+async def run_inference(request, output):
+    task = asyncio.create_task(InferencePipeline(request, output).run())
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGTERM, task.cancel)
+    try:
+        return await task
+    finally:
+        loop.remove_signal_handler(signal.SIGTERM)
 
 
 def main():
@@ -20,7 +31,7 @@ def main():
     kind = payload.pop("job_kind", "inference")
     try:
         if kind == "inference":
-            result = asyncio.run(InferencePipeline(RunRequest.from_dict(payload), args.output).run())
+            result = asyncio.run(run_inference(RunRequest.from_dict(payload), args.output))
         elif kind == "synthesis":
             from ..models.preparation import synthesize
 

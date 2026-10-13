@@ -55,6 +55,18 @@ def create_app(root: Path | None = None, token: str | None = None) -> FastAPI:
         path = jobs.store.resolve(f"{job_id}/telemetry.json")
         return json.loads(path.read_text()) if path.is_file() else {"origin_ns": 0, "clock_id": "not_started", "clock_resolution_ns": None, "spans": [], "events": [], "memory": [], "dropped_records": 0}
 
+    @app.get("/jobs/{job_id}/logs", dependencies=[Depends(authenticate)])
+    def logs(job_id: str):
+        job = get_job(job_id)
+        output = {}
+        for name in sorted(job["artifacts"]):
+            if name.endswith(".log") and len(output) < 8:
+                path = jobs.store.resolve(f"{job_id}/{name}")
+                with path.open("rb") as stream:
+                    stream.seek(max(0, path.stat().st_size - 32768))
+                    output[name] = stream.read().decode(errors="replace")
+        return output
+
     @app.get("/jobs/{job_id}/artifacts/{name}", dependencies=[Depends(authenticate)])
     def artifact(job_id: str, name: str):
         job = get_job(job_id)

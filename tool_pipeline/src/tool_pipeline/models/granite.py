@@ -91,7 +91,13 @@ class GraniteCaller:
             raise ValueError("The bounded router supports at most 20 tools")
         for i, schema in enumerate(self.registry.schemas):
             function = schema["function"]
-            options.append((chr(67 + i), function["description"], function["name"]))
+            parameters = function["parameters"]
+            required = parameters.get("required", [])
+            details = ", ".join(f"{key}: {value.get('description', value.get('type', 'value'))}"
+                                for key, value in parameters.get("properties", {}).items())
+            description = (f"{function['name']}: {function['description']} "
+                           f"Required arguments: {', '.join(required) or 'none'}. {details}")
+            options.append((chr(67 + i), description, function["name"]))
         return options
 
     def _score_routes(self, transcript, options):
@@ -102,7 +108,8 @@ class GraniteCaller:
                     "role": "system",
                     "content": (
                         "Classify the latest user speech for a tool router. "
-                        "Return only one label letter."
+                        "Choose clarification only when a required argument is missing. "
+                        "Tools with no required arguments can run immediately. Return only one label letter."
                     ),
                 },
                 {"role": "user", "content": f"Labels:\n{menu}\nLatest speech: {transcript}\nLabel:"},
@@ -146,6 +153,9 @@ class GraniteCaller:
         selected = next(action for label, _, action in options if label == ordered[0])
         routing = {
             "selected": ordered[0],
+            "selected_action": selected,
+            "options": {label: {"description": description, "action": action}
+                        for label, description, action in options},
             "scores": scores,
             "margin": scores[ordered[0]] - scores[ordered[1]],
         }
@@ -158,7 +168,9 @@ class GraniteCaller:
                 "role": "system",
                 "content": (
                     "Call the provided tool. Copy only details explicitly present in the user "
-                    "speech. Output only the native tool call."
+                    "speech. Omit optional arguments that were not provided. "
+                    "For a tool with no parameters, use an empty arguments object. "
+                    "Output only the native tool call."
                 ),
             },
             {"role": "user", "content": transcript},

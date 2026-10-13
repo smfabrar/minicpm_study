@@ -86,7 +86,8 @@ class RunService:
                 work.runs.save(run)
                 runs.append(run)
         for run in runs:
-            self.operations.submit("inference", {"run_id": run.id})
+            self.operations.submit("inference", {"run_id": run.id, "study_id": run.study_id,
+                                                    "case_id": run.case_id, "condition": run.condition})
         return runs
 
     def runtime_client(self, run: Run) -> RuntimeClient:
@@ -115,6 +116,7 @@ class RunService:
         client = self._client(run)
         directory = f"runs/{run.id}"
         self.artifacts.write_json(f"{directory}/request.json", run.request)
+        self.operations.report("Submitting inference", details={"condition": run.condition, "case_id": run.case_id})
         try:
             if not run.runtime_job_id:
                 checksum = self.artifacts.checksum(run.request["audio_path"])
@@ -124,15 +126,22 @@ class RunService:
                 run.runtime_job_id = job["id"]
                 run.status = RunStatus.RUNNING
                 self._save(run)
+            self.operations.report("Waiting for runtime", remote_job_id=run.runtime_job_id,
+                                   runtime_url=client.connection.url)
+            last_status = None
             deadline = time.monotonic() + run.request["settings"]["timeout_seconds"] + 3600
             while True:
                 job = client.job(run.runtime_job_id)
+                if job["status"] != last_status:
+                    last_status = job["status"]
+                    self.operations.report(f"Runtime {last_status}", remote_status=last_status)
                 if job["status"] not in {"queued", "running"}:
                     break
                 if time.monotonic() > deadline:
                     raise TimeoutError("Runtime polling deadline exceeded; the remote job ID is retained")
                 if self.operations.stopped.wait(0.8):
                     return
+            self.operations.report("Collecting runtime artifacts", details={"files": job.get("artifacts", [])})
             for name in job.get("artifacts", []):
                 if Path(name).name != name or Path(name).suffix not in {".wav", ".json", ".log"}:
                     continue
@@ -143,6 +152,9 @@ class RunService:
             run.artifact_directory = directory
             self.artifacts.write_json(f"{directory}/remote_job.json", job)
             self._save(run)
+            self.operations.report("Runtime evidence saved", artifact_directory=directory, details={"artifact_directory": directory, "error": run.error})
+            if run.status not in {RunStatus.COMPLETE, RunStatus.SILENT}:
+                raise RuntimeError(run.error or f"Runtime ended as {run.status}")
         except Exception as exc:
             run.status = RunStatus.INTERRUPTED if isinstance(exc, RuntimeConnectionError) and run.runtime_job_id else RunStatus.FAILED
             run.error = f"{type(exc).__name__}: {exc}"
@@ -176,9 +188,12 @@ class RunService:
             raise ConflictError("Only an interrupted attempt with a remote job ID can be resumed")
         if any(operation.kind == "inference" and operation.payload.get("run_id") == run_id and operation.status in {"queued", "running"} for operation in self.operations.list()):
             raise ConflictError("This run is already being collected")
-        run.status = RunStatus.RUNNING
-        self._save(run)
-        return self.operations.submit("inference", {"run_id": run_id})
+        with UnitOfWork(self.database) as work:
+            work.studies.get(run.study_id)
+            run.status = RunStatus.RUNNING
+            work.runs.save(run)
+        return self.operations.submit("inference", {"run_id": run_id, "study_id": run.study_id,
+                                                   "case_id": run.case_id, "condition": run.condition})
 
     def recover(self):
         with UnitOfWork(self.database) as work:

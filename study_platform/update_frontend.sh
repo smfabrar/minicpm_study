@@ -22,4 +22,4 @@ else
 fi
 npm --prefix "$frontend" test
 npm --prefix "$frontend" run build
-printf '%s\n' 'Study frontend built. Reload the browser to load the new Settings form.'
+printf '%s\n' 'Study frontend built. Reload the browser to load the updated website.'

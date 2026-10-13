@@ -2,7 +2,9 @@
 
 import asyncio
 import contextvars
+import hashlib
 import json
+import shutil
 import re
 import socket
 import time
@@ -53,6 +55,13 @@ class NativeSession:
                 f"saved value {self.settings.reference_audio!r}, checked path {str(reference.absolute())!r}. "
                 "Set a WAV path accessible to the pipeline worker and start a new run."
             )
+        with self.trace.span("native.reference_audio_snapshot"):
+            copy = self.output_dir / "reference.wav"
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            if reference.resolve() != copy.resolve():
+                shutil.copyfile(reference, copy)
+            self.trace.event("native.reference_audio", path=str(reference), artifact=copy.name,
+                             sha256=hashlib.sha256(copy.read_bytes()).hexdigest())
         with self.trace.span("native.connection"):
             self.ws = await websockets.connect(
                 self.settings.native_url,
@@ -60,7 +69,7 @@ class NativeSession:
             )
             await self._wait_control("session.queue_done", 120)
         with self.trace.span("native.session_initialization"):
-            voice = float32_payload(read_pcm(reference))
+            voice = float32_payload(read_pcm(copy))
             await self.ws.send(json.dumps({
                 "type": "session.init",
                 "payload": {

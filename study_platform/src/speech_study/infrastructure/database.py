@@ -13,6 +13,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS cases(id TEXT PRIMARY KEY, study_id TEXT NOT NULL REFERENCES studies(id), payload TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS tools(id TEXT PRIMARY KEY, study_id TEXT NOT NULL REFERENCES studies(id), name TEXT NOT NULL, payload TEXT NOT NULL, UNIQUE(study_id,name));
                 CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, study_id TEXT NOT NULL REFERENCES studies(id), case_id TEXT NOT NULL REFERENCES cases(id), payload TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS tool_library(id TEXT PRIMARY KEY, payload TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS cases_study ON cases(study_id);
                 CREATE INDEX IF NOT EXISTS runs_study ON runs(study_id);
             """)

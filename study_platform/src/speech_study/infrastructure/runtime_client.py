@@ -61,3 +61,7 @@ class RuntimeClient:
         if Path(name).name != name:
             raise ValueError("Artifact names cannot include directories")
         return self._request("GET", f"/jobs/{job_id}/artifacts/{name}", binary=True)
+
+
+    def logs(self, job_id: str) -> dict:
+        return self._request("GET", f"/jobs/{job_id}/logs")

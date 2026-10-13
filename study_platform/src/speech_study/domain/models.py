@@ -44,7 +44,7 @@ class Case:
     expected_answer: str = ""
     oracle_result: str = ""
     expected_tool: str = ""
-    expected_arguments: dict[str, str] = field(default_factory=dict)
+    expected_arguments: dict[str, Any] = field(default_factory=dict)
     split: str = "development"
     audio_path: str | None = None
     audio_sha256: str | None = None
@@ -66,6 +66,11 @@ class ToolDefinition:
     aliases: dict[str, str] = field(default_factory=dict)
     delay_ms: int = 0
     failure: str = "none"
+    parameters: dict[str, Any] | None = None
+    python_code: str = ""
+    timeout_seconds: float = 10
+    ground_arguments: bool = True
+    library_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -78,6 +83,7 @@ class Study:
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
     snapshot: dict[str, Any] | None = None
+    deleted_at: str | None = None
 
 
 @dataclass(slots=True)
@@ -117,3 +123,11 @@ class StudyDetails:
     cases: list[Case]
     tools: list[ToolDefinition]
     runs: list[Run]
+
+
+@dataclass(slots=True)
+class LibraryTool:
+    id: str
+    definition: dict[str, Any]
+    created_at: str = field(default_factory=utc_now)
+    updated_at: str = field(default_factory=utc_now)

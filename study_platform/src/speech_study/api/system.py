@@ -34,6 +34,11 @@ def operations(container: ServiceContainer):
     return container.operations.list()
 
 
+@router.get("/operations/{operation_id}")
+def operation(operation_id: str, container: ServiceContainer):
+    return container.operation_details.get(operation_id)
+
+
 @router.get("/artifacts/{path:path}")
 def artifact(path: str, container: ServiceContainer):
     file = container.artifacts.resolve(path)

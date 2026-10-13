@@ -132,7 +132,9 @@ src/tool_pipeline/
     jobs.py          saved job status and serial worker processes
     worker.py        dispatch one inference, synthesis or transcription job
     storage.py       job files
-  tools.py           validate and execute deterministic tools
+  tools.py           validate arguments and dispatch fixtures or Python tools
+  python_tool.py     supervise authored function processes and record execution
+  python_worker.py   execute saved source with JSON arguments, capture output
   telemetry.py       nested timings, events and memory sampling
   audio.py           WAV/PCM conversion
   reference.py       access the installed minicpm_tool reference
@@ -162,7 +164,7 @@ For the shortest reading path: `pipeline/runner.py` â†’ `pipeline/context.py` â†
 
 After updating an existing installation to this layout, refresh the console entry points using that environment's Python: `python -m pip install --no-deps -e /path/to/tool_pipeline`. The setup script also does this. `from tool_pipeline.pipeline import InferencePipeline`, `speech-infer`, `speech-runtime` and the HTTP endpoints keep the same public usage.
 
-Only `speech_contracts` is shared with the study application. `duplex_tools` is the reference dependency for Granite parsing, argument validation and deterministic tool implementations. Model packages are imported lazily by workers.
+Only `speech_contracts` is shared with the study application. `duplex_tools` is the reference dependency for Granite parsing and deterministic fixture implementations. Model packages are imported lazily by workers.
 
 ## Timing and verification
 
@@ -176,3 +178,7 @@ python -m compileall -q src launch_native.py
 ```
 
 CPU protocol and timing checks pass. The real TCP fixture is skipped only when the sandbox blocks listening sockets. Actual MiniCPM/Granite/Whisper/Kokoro execution and GPU timing require remote validation; no synthetic test fixture is presented as a study result.
+
+## Authored Python tools
+
+`kind: "python"` tools carry a `parameters` object schema and `python_code` defining `execute(arguments)`. The pipeline validates arguments, runs the saved source in a separate process, applies `timeout_seconds`, and records request/source/result/log files. Code runs with the runtime account's access and packages. The study backend submits definitions and collects artifacts; it does not execute them. See [the tool designer guide](../docs/TOOL_DESIGNER.md) for details. The runtime adds `GET /jobs/{id}/logs` for bounded live log tails.

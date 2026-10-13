@@ -99,7 +99,7 @@ class InferencePipeline:
                 raise ValueError("Input audio checksum does not match the frozen request")
 
             if self.request.condition == "B1":
-                self.tools = ToolRegistry(self.request.tools, self.trace)
+                self.tools = ToolRegistry(self.request.tools, self.trace, self.output_dir)
                 self.transcriber = await asyncio.to_thread(
                     self.transcriber_factory, settings, self.trace
                 )

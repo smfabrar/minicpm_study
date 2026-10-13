@@ -96,4 +96,21 @@ cd frontend
 npm run build
 ```
 
-Local evidence: study API/persistence and package-isolation checks pass. The independent pipeline test suite verifies the native JSON transport with an in-memory fixture; its real TCP fixture is skipped when this sandbox denies listening sockets. TypeScript syntax and local imports were checked using the available compiler; package downloads were unavailable, so the production frontend build and browser interaction remain unverified here. No GPU model inference, Kokoro generation, or audible correctness result is claimed. Run those checks on the server before collecting study results.
+Local evidence: study API/persistence and package-isolation checks pass. The independent pipeline test suite verifies the native JSON transport with an in-memory fixture; its real TCP fixture is skipped when this sandbox denies listening sockets. Node/npm and a connected browser are unavailable in the current local environment, so the TypeScript/Vite build and browser interaction remain unverified here. No GPU model inference, Kokoro generation, or audible correctness result is claimed. Run those checks on the server before collecting study results.
+
+## Tool designer, operations, exports and Trash
+
+See [the tool designer guide](../docs/TOOL_DESIGNER.md) for the Python function contract and the full Granite calling flow. The global tool library stores user-authored definitions; attaching a tool copies it into a draft study. The existing record-based fixtures remain available. The Python executor contains no built-in datetime or file-search function.
+
+Operations has a full queue view and a detail page with requests, remote jobs, progress and captured logs. Export ZIP at the top of a study includes metadata, recorded files, historical inputs, source and execution evidence with a checksum inventory. Delete study moves it to recoverable Trash; active work blocks deletion.
+
+For an existing server installation:
+
+```bash
+cd /workspace/minicpm-study-install/minicpm_study
+git pull --ff-only
+bash tool_pipeline/update_runtime.sh /workspace/minicpm-study-install/runtime
+bash study_platform/update_platform.sh /workspace/minicpm-study-install/runtime
+```
+
+Restart the study and runtime API services after these updates, then reload the browser. Keep the study service on port 8765 if local port 8080 is already occupied. The native CUDA stack does not need rebuilding for these application changes. Existing SQLite records load with defaults for new fields; no manual database migration is required.

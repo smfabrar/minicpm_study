@@ -11,18 +11,19 @@ from .default_tools import default_tools
 
 
 class StudyService:
-    def __init__(self, database: Database, artifacts: ArtifactStore):
+    def __init__(self, database: Database, artifacts: ArtifactStore, operations=None):
         self.database = database
         self.artifacts = artifacts
+        self.operations = operations
 
     @staticmethod
     def require_editable(study: Study) -> None:
         if study.status == StudyStatus.FROZEN:
             raise ConflictError("This study is frozen. Clone it to make changes.")
 
-    def list(self) -> list[dict]:
+    def list(self, *, deleted=False) -> list[dict]:
         with UnitOfWork(self.database) as work:
-            return [{**asdict(study), "case_count": len(work.cases.list_for_study(study.id)), "run_count": len(work.runs.list_for_study(study.id))} for study in work.studies.list()]
+            return [{**asdict(study), "case_count": len(work.cases.list_for_study(study.id)), "run_count": len(work.runs.list_for_study(study.id))} for study in work.studies.list(deleted=deleted)]
 
     def get(self, study_id: str) -> StudyDetails:
         with UnitOfWork(self.database) as work:
@@ -98,6 +99,8 @@ class StudyService:
             others = work.tools.list_for_study(study_id)
             if any(t.name == tool.name and t.id != tool.id for t in others):
                 raise ConflictError("Tool names must be unique in a study")
+            if len(others) >= 20 and all(t.id != tool.id for t in others):
+                raise ValueError("A study supports at most 20 tools")
             work.tools.save(tool)
         return tool
 
@@ -150,3 +153,26 @@ class StudyService:
             for tool in work.tools.list_for_study(study_id):
                 work.tools.save(replace(tool, id=new_id(), study_id=clone.id))
         return clone
+
+
+    def delete(self, study_id: str) -> None:
+        with UnitOfWork(self.database) as work:
+            study = work.studies.get(study_id)
+            runs = work.runs.list_for_study(study_id)
+            active_run_ids = {run.id for run in runs if run.status in {"queued", "running"}}
+            operations = self.operations.list(limit=None) if self.operations else []
+            if active_run_ids or any(
+                operation.status in {"queued", "running"} and
+                (operation.payload.get("study_id") == study_id or
+                 any(operation.payload.get("run_id") == run.id for run in runs))
+                for operation in operations
+            ):
+                raise ConflictError("Wait for this study's queued and running operations before deleting it")
+            work.studies.save(replace(study, deleted_at=utc_now(), updated_at=utc_now()))
+
+    def restore(self, study_id: str) -> Study:
+        with UnitOfWork(self.database) as work:
+            study = work.studies.get(study_id, include_deleted=True)
+            study = replace(study, deleted_at=None, updated_at=utc_now())
+            work.studies.save(study)
+        return study

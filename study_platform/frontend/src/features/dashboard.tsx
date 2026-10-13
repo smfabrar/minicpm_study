@@ -16,6 +16,8 @@ import { shortDate } from '@/lib/utils';
 export function Dashboard() {
   const studies = useQuery({ queryKey: ['studies'], queryFn: api.studies, refetchInterval: 5000 });
   const [open, setOpen] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
+  const trash = useQuery({ queryKey: ['trash'], queryFn: api.trash, enabled: showTrash });
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const action = useAction();
@@ -51,6 +53,8 @@ export function Dashboard() {
       </Dialog>
     </div>
     <ErrorNotice error={studies.error} />
+    <div><Button variant="outline" onClick={() => setShowTrash(!showTrash)}>{showTrash ? 'Hide Trash' : 'Show Trash'}</Button></div>
+    {showTrash && <Card><CardHeader><CardTitle>Trash</CardTitle><CardDescription>Deleted studies retain their files and run history.</CardDescription></CardHeader><CardContent className="space-y-3"><ErrorNotice error={trash.error} />{trash.data?.map(study => <div key={study.id} className="flex items-center justify-between gap-4 rounded-lg border p-3"><div><p>{study.name}</p><p className="text-xs text-muted-foreground">{study.case_count} cases · {study.run_count} runs</p></div><Button size="sm" disabled={action.isPending} onClick={() => action.mutate(() => api.request(`/studies/${study.id}/restore`, 'POST'))}>Restore</Button></div>)}{trash.data?.length === 0 && <p className="text-sm text-muted-foreground">Trash is empty.</p>}</CardContent></Card>}
     <div className="grid gap-4 sm:grid-cols-3">
       {[['Studies', studies.data?.length ?? 0], ['Cases', studies.data?.reduce((sum, study) => sum + study.case_count, 0) ?? 0], ['Runs collected', studies.data?.reduce((sum, study) => sum + study.run_count, 0) ?? 0]].map(([label, value]) => <Card key={label}>
         <CardHeader>

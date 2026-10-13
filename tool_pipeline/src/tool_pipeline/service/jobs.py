@@ -106,14 +106,15 @@ class JobManager:
                         "--request", str(directory / "request.json"),
                         "--output", str(directory),
                     ]
-                    process = subprocess.Popen(command, stdout=log, stderr=log)
                     with self.state_lock:
+                        if self.stopped.is_set():
+                            raise RuntimeError("Runtime is shutting down")
+                        process = subprocess.Popen(command, stdout=log, stderr=log, start_new_session=True)
                         self.processes.add(process)
                     try:
                         process.wait(timeout=timeout)
                     except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait()
+                        self._stop_worker(process)
                         raise TimeoutError("Worker exceeded the job deadline; partial artifacts retained")
                     finally:
                         with self.state_lock:
@@ -142,8 +143,35 @@ class JobManager:
         ]
         return job
 
+    @staticmethod
+    def _stop_worker(process):
+        """Capture ownership before stopping the parent, then reap its tool workers."""
+        import signal
+        import psutil
+
+        try:
+            children = psutil.Process(process.pid).children(recursive=True)
+        except psutil.NoSuchProcess:
+            children = []
+        for child in reversed(children):
+            try:
+                # Python tools own a process group; include descendants they spawned.
+                if os.getpgid(child.pid) == child.pid:
+                    os.killpg(child.pid, signal.SIGKILL)
+                else:
+                    child.kill()
+            except (ProcessLookupError, psutil.NoSuchProcess):
+                pass
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
     def close(self):
-        self.stopped.set()
         with self.state_lock:
-            for process in list(self.processes):
-                process.terminate()
+            self.stopped.set()
+            processes = list(self.processes)
+        for process in processes:
+            self._stop_worker(process)

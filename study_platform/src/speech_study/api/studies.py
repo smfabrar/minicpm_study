@@ -2,15 +2,15 @@ from dataclasses import asdict
 from fastapi import APIRouter, UploadFile, File
 from fastapi.responses import Response
 from .dependencies import ServiceContainer
-from .schemas import CaseInput, RunCreate, StudyCreate, StudyUpdate, ToolInput
+from .schemas import CaseInput, RunCreate, StudyCreate, StudyUpdate, ToolInput, LibraryAttach
 from ..services.templates import add_proposal_cases
 
 router = APIRouter(prefix="/api/studies", tags=["studies"])
 
 
 @router.get("")
-def list_studies(container: ServiceContainer):
-    return container.studies.list()
+def list_studies(container: ServiceContainer, deleted: bool = False):
+    return container.studies.list(deleted=deleted)
 
 
 @router.post("", status_code=201)
@@ -103,4 +103,19 @@ def analysis(study_id: str, container: ServiceContainer):
 
 @router.get("/{study_id}/export")
 def export(study_id: str, container: ServiceContainer):
-    return Response(container.analysis.export(study_id), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="study-{study_id[:8]}.zip"'})
+    return Response(container.exports.export(study_id), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="study-{study_id[:8]}.zip"'})
+
+
+@router.delete("/{study_id}", status_code=204)
+def delete_study(study_id: str, container: ServiceContainer):
+    container.studies.delete(study_id)
+
+
+@router.post("/{study_id}/restore")
+def restore_study(study_id: str, container: ServiceContainer):
+    return container.studies.restore(study_id)
+
+
+@router.post("/{study_id}/tools/attach", status_code=201)
+def attach_tool(study_id: str, body: LibraryAttach, container: ServiceContainer):
+    return container.library.attach(study_id, body.library_id)

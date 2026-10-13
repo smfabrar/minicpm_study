@@ -8,6 +8,7 @@ export interface StudySummary {
   case_count: number;
   run_count: number;
   updated_at: string;
+  deleted_at?: string | null;
 }
 export interface StudyCase {
   id: string;
@@ -18,7 +19,7 @@ export interface StudyCase {
   expected_answer: string;
   oracle_result: string;
   expected_tool: string;
-  expected_arguments: Record<string, string>;
+  expected_arguments: Record<string, unknown>;
   notes: string;
   audio_path: string | null;
   audio_sha256: string | null;
@@ -35,6 +36,18 @@ export interface Tool {
   aliases: Record<string, string>;
   delay_ms: number;
   failure: string;
+  parameters?: Record<string, unknown> | null;
+  python_code?: string;
+  timeout_seconds?: number;
+  ground_arguments?: boolean;
+  library_id?: string | null;
+}
+export type ToolPayload = Omit<Tool, 'id' | 'study_id' | 'library_id'>;
+export interface LibraryTool {
+  id: string;
+  definition: ToolPayload;
+  created_at: string;
+  updated_at: string;
 }
 export interface Review {
   verdict: string;
@@ -137,7 +150,21 @@ export interface RuntimeHealth {
 export interface Operation {
   id: string;
   kind: string;
+  payload: { study_id?: string; run_id?: string; case_id?: string; condition?: string; question?: string; [key: string]: unknown };
   status: string;
   message: string;
   created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  queue_position: number | null;
+  remote_job_id: string | null;
+  runtime_url: string;
+  remote_status: string | null;
+  artifact_directory: string | null;
+}
+export interface OperationDetails extends Operation {
+  log: string;
+  runtime: Record<string, unknown> | null;
+  runtime_logs: Record<string, string>;
+  runtime_error?: string;
 }

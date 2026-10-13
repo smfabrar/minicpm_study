@@ -11,9 +11,12 @@ from .infrastructure.background import BackgroundQueue
 from .infrastructure.database import Database
 from .infrastructure.runtime_client import RuntimeConnection
 from .services.analysis import AnalysisService
+from .services.exports import ExportService
 from .services.preparation import PreparationService
 from .services.runs import RunService
 from .services.studies import StudyService
+from .services.tool_library import ToolLibraryService
+from .services.operations import OperationService
 
 
 class ConnectionSettings:
@@ -45,6 +48,9 @@ class ApplicationServices:
     operations: BackgroundQueue
     connection: ConnectionSettings
     artifacts: ArtifactStore
+    library: ToolLibraryService
+    operation_details: OperationService
+    exports: ExportService
 
     @classmethod
     def create(cls, root: Path):
@@ -53,7 +59,10 @@ class ApplicationServices:
         artifacts = ArtifactStore(root / "artifacts")
         operations = BackgroundQueue(root / "operations")
         connection = ConnectionSettings(root / "connection.json")
-        studies = StudyService(database, artifacts)
+        studies = StudyService(database, artifacts, operations)
         runs = RunService(database, artifacts, operations, connection.get)
         preparation = PreparationService(studies, runs, artifacts, operations, connection.get)
-        return cls(studies, runs, preparation, AnalysisService(studies, artifacts), operations, connection, artifacts)
+        analysis = AnalysisService(studies, artifacts)
+        return cls(studies, runs, preparation, analysis, operations, connection, artifacts,
+                   ToolLibraryService(database, studies), OperationService(operations, connection.get, artifacts),
+                   ExportService(studies, analysis, artifacts, operations))
