@@ -104,11 +104,14 @@ See [the tool designer guide](../docs/TOOL_DESIGNER.md) for the Python function 
 
 Operations has a full queue view and a detail page with requests, remote jobs, progress and captured logs. Export ZIP at the top of a study includes metadata, recorded files, historical inputs, source and execution evidence with a checksum inventory. Delete study moves it to recoverable Trash; active work blocks deletion.
 
+The downloadable installer uses a detached checkout. Update it with fetch and checkout rather than `git pull`:
+
 For an existing server installation:
 
 ```bash
 cd /workspace/minicpm-study-install/minicpm_study
-git pull --ff-only
+git fetch origin main
+git checkout --detach FETCH_HEAD
 bash tool_pipeline/update_runtime.sh /workspace/minicpm-study-install/runtime
 bash study_platform/update_platform.sh /workspace/minicpm-study-install/runtime
 ```
