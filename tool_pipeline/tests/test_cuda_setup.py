@@ -224,3 +224,88 @@ def test_generated_native_and_study_scripts_have_valid_shell_and_frozen_settings
                               env=dict(os.environ, SPEECH_STUDY_PORT="8080"),
                               capture_output=True, text=True, check=True)
     assert json.loads(launched.stdout) == ["--data", str(config.root / "data/platform"), "--port", "8080"]
+
+
+def toolkit_fixture(root, layout):
+    includes = root / layout / 'include'
+    libraries = root / layout / 'lib'
+    includes.mkdir(parents=True)
+    libraries.mkdir(parents=True)
+    for name in ('cuda_runtime.h', 'cuda.h', 'cublas_v2.h'):
+        (includes / name).write_text('Development header fixture')
+    for name in ('libcudart.so', 'libcublas.so'):
+        (libraries / name).write_text('Library layout fixture, not CUDA binaries')
+    return includes, libraries
+
+
+@pytest.mark.parametrize('layout', ['', 'targets/x86_64-linux'])
+def test_cuda_paths_support_flat_and_target_toolkits(tmp_path, layout):
+    from cuda_toolkit import toolkit_paths
+    includes, libraries = toolkit_fixture(tmp_path, layout)
+    paths = toolkit_paths(tmp_path)
+    assert paths['cuda_runtime.h'] == str(includes / 'cuda_runtime.h')
+    assert paths['libcudart.so'] == str(libraries / 'libcudart.so')
+
+
+def test_cuda_headers_and_dangling_libraries_are_rejected(tmp_path):
+    from cuda_toolkit import toolkit_paths
+    includes, libraries = toolkit_fixture(tmp_path, '')
+    (includes / 'cuda_runtime.h').unlink()
+    with pytest.raises(RuntimeError, match='missing cuda_runtime.h'):
+        toolkit_paths(tmp_path)
+    (includes / 'cuda_runtime.h').write_text('header')
+    (libraries / 'libcudart.so').unlink()
+    (libraries / 'libcudart.so').symlink_to('../targets/x86_64-linux/lib/libcudart.so')
+    with pytest.raises(RuntimeError, match='missing libcudart.so'):
+        toolkit_paths(tmp_path)
+
+
+def test_cuda_package_repair_targets_only_missing_pinned_payloads(tmp_path):
+    from cuda_toolkit import missing_package_specs
+    metadata = tmp_path / 'conda-meta'
+    metadata.mkdir()
+    (tmp_path / 'present.h').write_text('present')
+    base = {'version': '12.5.82', 'build': '0',
+            'channel': 'https://conda.anaconda.org/nvidia/label/cuda-12.5.1/noarch'}
+    for name, files, channel in (
+        ('cuda-cudart-dev_linux-64', ['targets/x86_64-linux/include/cuda_runtime.h'], base['channel']),
+        ('cuda-present', ['present.h'], base['channel']),
+        ('cuda-toolkit', [], base['channel']),
+        ('unrelated', ['missing-file'], 'conda-forge'),
+    ):
+        (metadata / (name + '.json')).write_text(json.dumps({**base, 'name': name, 'files': files, 'channel': channel}))
+    assert missing_package_specs(tmp_path) == ['cuda-cudart-dev_linux-64=12.5.82=0']
+    assert not (tmp_path / 'targets').exists()
+
+
+def test_cuda_package_metadata_cannot_escape_its_prefix(tmp_path):
+    from cuda_toolkit import missing_package_specs
+    directory = tmp_path / 'conda-meta'
+    directory.mkdir()
+    (directory / 'invalid.json').write_text(json.dumps({
+        'name': 'cuda-invalid', 'version': '12.5.82', 'build': '0',
+        'channel': 'nvidia/label/cuda-12.5.1', 'files': ['../outside'],
+    }))
+    with pytest.raises(ValueError, match='Invalid installed package path'):
+        missing_package_specs(tmp_path)
+
+
+def test_native_build_pins_cmake_to_validated_cuda_paths(tmp_path, monkeypatch):
+    config = configuration(tmp_path)
+    _, libraries = toolkit_fixture(config.cuda_home, '')
+    reference = config.demo / 'assets/ref_audio/ref_en_dlc_1.wav'
+    reference.parent.mkdir(parents=True)
+    reference.write_bytes(b'reference fixture')
+    commands = []
+    runner = types.SimpleNamespace(environment=dict(os.environ),
+                                   run=lambda command: commands.append([str(v) for v in command]))
+    builder = setup.NativeBuilder(config, runner)
+    monkeypatch.setattr(builder, 'checkout', lambda *args: None)
+    monkeypatch.setattr(builder, 'verify_changes', lambda *args: None)
+    monkeypatch.setattr(setup.subprocess, 'run', lambda *args, **kwargs: types.SimpleNamespace(returncode=0))
+    options = builder.build('86')
+    assert f'-DCUDAToolkit_ROOT={config.cuda_home}' in options
+    assert f'-DCMAKE_PREFIX_PATH={config.cuda_home}' in options
+    assert f'-DCMAKE_LIBRARY_PATH={libraries}' in options
+    assert f'-DCUDA_CUDART={libraries / "libcudart.so"}' in options
+    assert commands[-1][-2:] == ['--parallel', '2']

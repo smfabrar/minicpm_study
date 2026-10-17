@@ -42,7 +42,8 @@ def test_bootstrap_dry_run_needs_no_checkout_or_gpu_and_makes_no_files(tmp_path)
 def test_bootstrap_download_dispatch_cuda13_and_safe_rerun(tmp_path):
     fixture = tmp_path / "source"
     fixture.mkdir()
-    (fixture / "tool_pipeline").mkdir()
+    (fixture / "tool_pipeline/scripts").mkdir(parents=True)
+    shutil.copyfile(ROOT / "tool_pipeline/scripts/cuda_toolkit.py", fixture / "tool_pipeline/scripts/cuda_toolkit.py")
     (fixture / "tool_pipeline/setup_cuda125.sh").write_text(
         f'#!/usr/bin/env bash\n"$SPEECH_SETUP_PYTHON" -c '
         + shlex.quote('import json, os, sys; open(os.environ["BOOTSTRAP_CALL"], "w").write(json.dumps({"args": sys.argv[1:], "tmpdir": os.environ["TMPDIR"], "no_cache": os.environ["PIP_NO_CACHE_DIR"]}))')
@@ -72,11 +73,21 @@ def test_bootstrap_download_dispatch_cuda13_and_safe_rerun(tmp_path):
         f'sys.exit(subprocess.call([{real_git!r}, *a]))\n')
 
     micromamba = f'''#!{sys.executable}
-import pathlib, sys
+import json, os, pathlib, sys
 args = sys.argv[1:]
+if "--version" in args:
+    print("Fixture micromamba")
+    sys.exit(0)
+with open(os.environ["FIXTURE_MAMBA_CALLS"], "a") as stream:
+    stream.write(json.dumps(args) + "\\n")
 prefix = pathlib.Path(args[args.index('--prefix') + 1])
 (prefix / 'bin').mkdir(parents=True, exist_ok=True)
 (prefix / 'conda-meta').mkdir(exist_ok=True)
+for relative in ('include/cuda_runtime.h', 'include/cuda.h', 'include/cublas_v2.h',
+                 'lib/libcudart.so', 'lib/libcublas.so'):
+    path = prefix / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('CUDA layout fixture, not a compiler or library')
 compiler = prefix / 'bin/nvcc'
 compiler.write_text('#!/bin/sh\\necho "Cuda compilation tools, release 12.5, V12.5"\\n')
 compiler.chmod(0o755)
@@ -105,7 +116,8 @@ compiler.chmod(0o755)
     environment = dict(os.environ, PATH=f"{tools}:{os.environ['PATH']}",
         SPEECH_SETUP_PYTHON=sys.executable, CUDA_HOME=str(tmp_path / "cuda13"),
         FIXTURE_SOURCE=str(fixture), FIXTURE_MICROMAMBA=str(micromamba_archive),
-        FIXTURE_NODE=str(node_archive), FIXTURE_CHECKSUMS=str(checksums), BOOTSTRAP_CALL=str(call))
+        FIXTURE_NODE=str(node_archive), FIXTURE_CHECKSUMS=str(checksums), BOOTSTRAP_CALL=str(call),
+        FIXTURE_MAMBA_CALLS=str(tmp_path / "mamba-calls.jsonl"))
     command = ["bash", ROOT / "install.sh", "--prefix", prefix, "--skip-models"]
     result = subprocess.run(command, env=environment, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -123,6 +135,23 @@ compiler.chmod(0o755)
     rerun = subprocess.run(command, env=environment, capture_output=True, text=True)
     assert rerun.returncode == 0, rerun.stdout + rerun.stderr
     assert generated_lock.read_text() == "untracked generated fixture"
+    # A valid nvcc must not hide missing development payloads on a rerun.
+    cuda = prefix / "cuda-12.5"
+    header = cuda / "include/cuda_runtime.h"
+    header.unlink()
+    metadata = {"name": "cuda-cudart-dev_linux-64", "version": "12.5.82", "build": "0",
+                "channel": "https://conda.anaconda.org/nvidia/label/cuda-12.5.1/noarch",
+                "files": ["include/cuda_runtime.h"]}
+    (cuda / "conda-meta/cuda-cudart-dev_linux-64-12.5.82-0.json").write_text(json.dumps(metadata))
+    repaired = subprocess.run(command, env=environment, capture_output=True, text=True)
+    assert repaired.returncode == 0, repaired.stdout + repaired.stderr
+    assert "Repairing 1 CUDA packages" in repaired.stdout
+    assert header.is_file()
+    mamba_calls = [json.loads(line) for line in (tmp_path / "mamba-calls.jsonl").read_text().splitlines()]
+    assert "--force-reinstall" in mamba_calls[-1]
+    assert "--strict-channel-priority" in mamba_calls[-1]
+    assert "cuda-cudart-dev_linux-64=12.5.82=0" in mamba_calls[-1]
+    assert "cuda-toolkit=12.5.1" in mamba_calls[-1]
     changed = prefix / "minicpm_study/tool_pipeline/setup_cuda125.sh"
     changed.write_text(changed.read_text() + "# local user edit\n")
     rejected = subprocess.run(command, env=environment, capture_output=True, text=True)

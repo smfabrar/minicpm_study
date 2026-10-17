@@ -173,12 +173,14 @@ find_python() {
 }
 
 is_cuda125() {
-    [[ -x "$1/bin/nvcc" ]] && "$1/bin/nvcc" --version | grep -Eq 'release 12\.5[,[:space:]]'
+    [[ -x "$1/bin/nvcc" ]] || return 1
+    "$1/bin/nvcc" --version | grep -Eq 'release 12\.5[,[:space:]]' || return 1
+    "$setup_python" "$install_root/minicpm_study/tool_pipeline/scripts/cuda_toolkit.py" check "$1"
 }
 
 prepare_cuda() {
     if [[ -n "$cuda_home" ]]; then
-        is_cuda125 "$cuda_home" || die '--cuda-home must contain a CUDA 12.5 nvcc'
+        is_cuda125 "$cuda_home" || die '--cuda-home must contain a complete CUDA 12.5 development toolkit'
         return
     fi
     local candidate nvcc_path
@@ -190,10 +192,12 @@ prepare_cuda() {
             return
         fi
     done
-    install_environment "$install_root/cuda-12.5" \
-        -c nvidia/label/cuda-12.5.1 -c conda-forge cuda-toolkit=12.5
+    # Ensure the managed package manager exists, including on a first install.
+    micromamba --version
+    "$setup_python" "$install_root/minicpm_study/tool_pipeline/scripts/cuda_toolkit.py" \
+        install "$install_root/cuda-12.5"
     cuda_home="$install_root/cuda-12.5"
-    is_cuda125 "$cuda_home" || die 'CUDA installation finished without a CUDA 12.5 compiler'
+    is_cuda125 "$cuda_home" || die 'CUDA installation is missing development headers or libraries'
 }
 
 prepare_node() {

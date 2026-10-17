@@ -170,3 +170,26 @@ Paste the generated `run-settings.json` into the study's **Settings → Runtime 
 Use the main GGUF's path inside the Hugging Face snapshot when launching native MiniCPM. Keep its filename and neighboring `tts/`, `audio/`, `vision/`, and `token2wav-gguf/` directories. Resolving that file's symlink into a hash-named `blobs/` file breaks companion-module discovery and can close a session during initialization. The Python launcher preserves this snapshot path.
 
 The manifest confirms source/build choices, imports, library loading and a small real Torch CUDA computation. It does **not** claim end-to-end model readiness or measured study latency. Validate one synthesized development question under B0, B1 and B2 on the server, listen to the saved speech, inspect the tool payload/ACK and telemetry, then run the full evaluation. Setup and compilation timing are not study measurements.
+
+## Repair an incomplete managed CUDA toolkit
+
+A successful `nvcc --version` does not verify development headers or linkable libraries. The bootstrap and native setup check `cuda_runtime.h`, `cuda.h`, `cublas_v2.h`, `libcudart.so`, and `libcublas.so`, following symlinks. Both a flat `include/` + `lib/` layout and a `targets/x86_64-linux/` layout are supported. CMake receives the validated toolkit root and library paths explicitly.
+
+If Conda lists CUDA 12.5 packages as installed but their files are missing, the managed installer compares their file manifests against the filesystem and force-reinstalls the affected packages at their recorded versions/builds from `nvidia/label/cuda-12.5.1`. It does not fabricate compatibility symlinks or reinstall the NVIDIA driver.
+
+After fetching the updated project, repair only CUDA and resume the existing setup:
+
+```bash
+cd /workspace/minicpm-study-install/minicpm_study
+python3 tool_pipeline/scripts/cuda_toolkit.py install \
+  /workspace/minicpm-study-install/cuda-12.5
+
+PATH="/workspace/minicpm-study-install/node/bin:$PATH" \
+  bash tool_pipeline/setup_cuda125.sh \
+  --root /workspace/minicpm-study-install/runtime \
+  --reference /workspace/minicpm-study-install/minicpm_tool \
+  --cuda-home /workspace/minicpm-study-install/cuda-12.5 \
+  --with-platform --jobs 2
+```
+
+This resumes the existing Python environments, source checkout and download caches. It avoids applying the bootstrap's fresh-install free-space floor to a partially completed installation. Native configuration/build still runs, and model downloads continue when needed. A missing or broken toolkit file after package repair stops setup with its filename.

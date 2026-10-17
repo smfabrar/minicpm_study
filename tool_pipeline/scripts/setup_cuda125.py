@@ -19,7 +19,9 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 PIPELINE_DIR = SCRIPT_DIR.parent
 sys.path.insert(0, str(PIPELINE_DIR))
+sys.path.insert(0, str(SCRIPT_DIR))
 from launch_native import DEMO_REVISION, NATIVE_REVISION  # noqa: E402
+from cuda_toolkit import toolkit_paths  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -92,6 +94,7 @@ class HostPreflight:
         version = self.runner.run([nvcc, "--version"], capture=True)
         if not re.search(r"release 12\.5[,\s]", version):
             raise RuntimeError("nvcc must be CUDA 12.5; nvidia-smi's CUDA label is not a toolkit check")
+        toolkit_paths(self.config.cuda_home)
         output = self.runner.run(["nvidia-smi", "--query-gpu=name,driver_version,memory.total",
                                   "--format=csv,noheader,nounits"], capture=True)
         devices = [{"name": row[0].strip(), "driver": row[1].strip(),
@@ -197,7 +200,13 @@ class NativeBuilder:
             self.runner.run(["git", "-C", config.upstream, "apply", config.patch])
         self.verify_changes(config.upstream, NATIVE_REVISION, config.patch)
         self.verify_changes(config.demo, DEMO_REVISION)
-        options = ["-DCMAKE_BUILD_TYPE=Release", "-DGGML_CUDA=ON", "-DGGML_CUDA_NO_VMM=ON",
+        paths = toolkit_paths(config.cuda_home)
+        library_dirs = sorted({str(Path(paths[name]).parent) for name in ("libcudart.so", "libcublas.so")})
+        options = [f"-DCUDAToolkit_ROOT={config.cuda_home}",
+                   f"-DCMAKE_PREFIX_PATH={config.cuda_home}",
+                   f"-DCMAKE_LIBRARY_PATH={';'.join(library_dirs)}",
+                   f"-DCUDA_CUDART={paths['libcudart.so']}",
+                   "-DCMAKE_BUILD_TYPE=Release", "-DGGML_CUDA=ON", "-DGGML_CUDA_NO_VMM=ON",
                    "-DGGML_NATIVE=OFF", f"-DCMAKE_CUDA_ARCHITECTURES={architectures}",
                    f"-DCMAKE_CUDA_COMPILER={config.cuda_home / 'bin/nvcc'}",
                    "-DCMAKE_C_COMPILER=gcc-12", "-DCMAKE_CXX_COMPILER=g++-12",
