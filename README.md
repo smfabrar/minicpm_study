@@ -12,6 +12,8 @@ minicpm_study/
 
 The website submits one audio recording and its configuration to the pipeline over HTTP. The pipeline owns model inference, tool execution, context injection, output audio and telemetry. Study storage and review remain in the website backend.
 
+For a new GPU machine, follow the [fresh GPU setup guide](docs/FRESH_GPU_SETUP.md). It covers toolkit preparation, installation, background services, SSH forwarding, and a first study run. It uses an explicit CUDA 12.5 toolkit to bypass the unresolved micromamba CUDA cache failure.
+
 ## Clone and prepare the reference
 
 For an Ubuntu/Debian GPU server, the downloadable installer performs the full setup:
