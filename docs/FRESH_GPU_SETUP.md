@@ -12,6 +12,40 @@ path still requires validation on a fresh GPU server.
 
 ## 1. Choose the machine
 
+### Recommended Vast.ai selection
+
+Create a custom template with these settings:
+
+| Setting | Selection |
+| --- | --- |
+| Image Path:Tag | `nvidia/cuda:12.5.1-devel-ubuntu24.04` |
+| Version selection | Exact tag above; do not select `[Automatic]` |
+| Launch mode | Interactive shell server, SSH |
+| GPU | One RTX 3090, 24 GB VRAM |
+| Allocated CPU / host RAM | Prefer 8 vCPUs and 32 GB RAM |
+| Instance storage | Prefer 100 GB |
+| Host driver | At least 555.42.02 |
+
+This is a recommended configuration with more memory headroom than the RTX 3060,
+not a claim of completed end-to-end validation on an RTX 3090. The image includes
+CUDA development tools; the application, models, and native build still require
+installation. The image download itself can take time on a host that has not
+cached it.
+
+In Vast's template editor, set **Image Path:Tag** and choose **Interactive shell
+server, SSH**, then save and use the template to select an offer. Select the
+exact version rather than automatic version selection. See
+[Vast's template settings](https://docs.vast.ai/guides/templates/template-settings)
+and [NVIDIA's published image tags](https://gitlab.com/nvidia/container-images/cuda/-/blob/master/doc/supported-tags.md).
+
+The offer's **Max CUDA** value must support this toolkit, but that field alone
+does not establish which toolkit is installed inside the selected image. A host
+advertising CUDA 12.6 or 13 can run this older image with a compatible driver.
+Verify the driver and actual toolkit after connecting. With this template,
+skip the apt CUDA installation in step 3 if its verification block passes.
+
+### General requirements
+
 - Ubuntu 22.04 or 24.04, Linux x86_64, with root or sudo access.
 - NVIDIA GPU supported by the current CUDA 12.5 / Torch 2.6 cu124 stack.
   RTX 3060 is the current target; this guide does not establish support for
@@ -54,6 +88,9 @@ df -h / /workspace /tmp
 df -i /workspace
 free -h
 ```
+
+The bare CUDA image may not yet include Python. If `python3 --version` reports
+that it is missing, step 4 installs Ubuntu's Python and venv support.
 
 Check the filesystem containing `/workspace`, even if `/` has plenty of space.
 Use a larger mounted volume throughout this guide if `/workspace` is too small.
@@ -121,7 +158,8 @@ commands select CUDA 12.5 by its explicit path.
 **Server — fresh checkout:**
 
 ```bash
-apt-get install -y git
+apt-get update
+apt-get install -y git python3 python3-venv
 mkdir -p /workspace/minicpm-study-install
 git clone https://github.com/smfabrar/minicpm_study.git \
   /workspace/minicpm-study-install/minicpm_study
