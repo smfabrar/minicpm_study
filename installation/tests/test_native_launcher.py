@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 PROJECT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("native_launcher_fixture", PROJECT / "launch_native.py")
+spec = importlib.util.spec_from_file_location("native_launcher_fixture", PROJECT / "internal/launch_native.py")
 launcher = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = launcher
 spec.loader.exec_module(launcher)

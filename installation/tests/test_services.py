@@ -1,9 +1,9 @@
 """Restart ownership checks with process doubles and real shell startup fixtures."""
 
 import fcntl
+import importlib.util
 import os
 import shlex
-import shutil
 import signal
 import subprocess
 import sys
@@ -12,8 +12,17 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "restart_native.sh"
-STOP_CODE = SCRIPT.read_text().split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+SCRIPT = Path(__file__).resolve().parents[1] / "restart.sh"
+spec = importlib.util.spec_from_file_location("services_fixture", SCRIPT.parent / "internal/services.py")
+services = importlib.util.module_from_spec(spec)
+# The local CPU test environment need not install runtime dependencies.
+previous = sys.modules.get("psutil")
+sys.modules["psutil"] = types.SimpleNamespace()
+spec.loader.exec_module(services)
+if previous is None:
+    del sys.modules["psutil"]
+else:
+    sys.modules["psutil"] = previous
 
 
 def test_stop_targets_selected_installation_and_descendants(tmp_path, monkeypatch):
@@ -64,13 +73,11 @@ def test_stop_targets_selected_installation_and_descendants(tmp_path, monkeypatc
         STATUS_ZOMBIE="zombie",
         NoSuchProcess=ProcessLookupError, AccessDenied=PermissionError,
     )
-    monkeypatch.setitem(sys.modules, "psutil", fake)
+    monkeypatch.setattr(services, "psutil", fake)
     clock = iter(range(0, 200, 20))
-    monkeypatch.setitem(sys.modules, "time", types.SimpleNamespace(
-        monotonic=lambda: next(clock), sleep=lambda seconds: None,
-    ))
-    monkeypatch.setattr(sys, "argv", ["-", str(root)])
-    exec(compile(STOP_CODE, str(SCRIPT), "exec"), {})
+    monkeypatch.setattr(services.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(services.time, "sleep", lambda seconds: None)
+    services.Services(root).stop("native")
     assert {pid for action, pid in calls if action == "terminate"} == {10, 11, 12, 13, 14}
     assert calls.index(("terminate", 11)) < calls.index(("terminate", 10))
     assert ("kill", 12) in calls
@@ -89,18 +96,15 @@ def installed_runtime(tmp_path):
     # Shell fixtures contain no running native processes; matching is checked above.
     (modules / "psutil.py").write_text(
         "def process_iter(fields): return []\n"
-        "def wait_procs(items, timeout): return ([], [])\n"
+        "STATUS_ZOMBIE = 'zombie'\n"
+        "NoSuchProcess = ProcessLookupError\n"
+        "AccessDenied = PermissionError\n"
+        "class Process:\n"
+        "    def __init__(self, pid): self.pid = pid\n"
+        "    def is_running(self): return True\n"
+        "    def status(self): return 'running'\n"
     )
-    tools = tmp_path / "tools"
-    tools.mkdir()
-    if shutil.which("flock") is None:
-        # Exercise an actual file lock on macOS, where the Linux flock CLI is absent.
-        flock = tools / "flock"
-        flock.write_text(f"#!{sys.executable}\nimport fcntl, sys\n"
-                         "try: fcntl.flock(int(sys.argv[-1]), fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
-                         "except BlockingIOError: sys.exit(1)\n")
-        flock.chmod(0o755)
-    env = dict(os.environ, PYTHONPATH=str(modules), PATH=str(tools) + os.pathsep + os.environ["PATH"])
+    env = dict(os.environ, PYTHONPATH=str(modules))
     return root, env
 
 
@@ -116,20 +120,20 @@ def test_restart_detaches_launcher_and_preserves_previous_log(installed_runtime)
     (root / "logs").mkdir()
     (root / "logs/native-service.log").write_text("previous diagnostics\n")
     try:
-        result = subprocess.run(["bash", SCRIPT, root], env=env, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(["bash", SCRIPT, root, "native"], env=env, capture_output=True, text=True, timeout=10)
         assert result.returncode == 0, result.stderr
-        assert "Native services started" in result.stdout
+        assert "native: ready" in result.stdout
         assert (root / "logs/native-service.log.previous").read_text() == "previous diagnostics\n"
-        pid = int((root / "logs/native.pid").read_text())
+        pid = int(next((root / "logs").glob("native-fixture-*" )).name.rsplit("-", 1)[1])
         os.kill(pid, 0)
         # The detached process must not retain the restart lock descriptor.
-        with (root / "logs/native-restart.lock").open("w") as lock:
+        with (root / "logs/services.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     finally:
-        pid_file = root / "logs/native.pid"
-        if pid_file.exists():
+        manifests = list((root / "logs").glob("native-fixture-*"))
+        if manifests:
             try:
-                os.kill(int(pid_file.read_text()), signal.SIGTERM)
+                os.kill(int(manifests[0].name.rsplit("-", 1)[1]), signal.SIGTERM)
             except ProcessLookupError:
                 pass
 
@@ -139,9 +143,9 @@ def test_failed_launcher_reports_its_log(installed_runtime):
     launcher = root / "bin/start_native.sh"
     launcher.write_text('#!/usr/bin/env bash\necho "fixture startup failure" >&2\nexit 12\n')
     launcher.chmod(0o755)
-    result = subprocess.run(["bash", SCRIPT, root], env=env, capture_output=True, text=True, timeout=10)
+    result = subprocess.run(["bash", SCRIPT, root, "native"], env=env, capture_output=True, text=True, timeout=10)
     assert result.returncode == 1
-    assert "Native launcher exited" in result.stderr
+    assert "native launcher exited" in result.stderr
     assert "fixture startup failure" in result.stderr
 
 
@@ -151,9 +155,58 @@ def test_concurrent_restart_is_rejected_before_stopping(installed_runtime):
     launcher.write_text('#!/usr/bin/env bash\nexit 99\n')
     launcher.chmod(0o755)
     (root / "logs").mkdir()
-    with (root / "logs/native-restart.lock").open("w") as lock:
+    with (root / "logs/services.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        result = subprocess.run(["bash", SCRIPT, root], env=env, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(["bash", SCRIPT, root, "native"], env=env, capture_output=True, text=True, timeout=10)
     assert result.returncode == 1
-    assert "Another native restart" in result.stderr
+    assert "Another service command" in result.stderr
     assert "Stopping" not in result.stdout
+
+
+def test_repeated_start_does_not_launch_duplicate(tmp_path, monkeypatch, capsys):
+    manager = services.Services(tmp_path)
+    monkeypatch.setattr(manager, "processes", lambda name: [object()])
+    monkeypatch.setattr(manager, "ready", lambda name, processes: True)
+    monkeypatch.setattr(services.subprocess, "Popen", lambda *a, **kw: pytest.fail("duplicate launch"))
+    manager.start("study")
+    assert "already running" in capsys.readouterr().out
+
+
+def test_partial_stack_is_not_claimed_ready(tmp_path, monkeypatch):
+    manager = services.Services(tmp_path)
+    monkeypatch.setattr(manager, "processes", lambda name: [object()])
+    monkeypatch.setattr(manager, "ready", lambda name, processes: False)
+    with pytest.raises(RuntimeError, match="existing processes but is not ready"):
+        manager.start("native")
+
+
+def test_runtime_stop_does_not_match_other_installations_or_command_substrings(tmp_path, monkeypatch):
+    root = tmp_path / "runtime"
+    executable = str(root / "venv/bin/speech-runtime")
+    class Process:
+        def __init__(self, pid, args):
+            self.pid = pid
+            self.info = {"cmdline": args, "cwd": str(root)}
+        def children(self, recursive):
+            return []
+    matching = Process(1, ["python", executable])
+    processes = [matching, Process(2, ["python", executable + "-other"]),
+                 Process(3, ["python", str(tmp_path / "other/venv/bin/speech-runtime")]),
+                 Process(4, ["editor", f"notes about {executable}"])]
+    fake = types.SimpleNamespace(process_iter=lambda fields: processes,
+                                 NoSuchProcess=ProcessLookupError, AccessDenied=PermissionError)
+    monkeypatch.setattr(services, "psutil", fake)
+    assert services.Services(root).processes("runtime") == [matching]
+
+
+def test_port_owned_by_other_process_is_rejected(tmp_path, monkeypatch):
+    manager = services.Services(tmp_path)
+    monkeypatch.setattr(manager, "processes", lambda name: [])
+    class OccupiedSocket:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def settimeout(self, value): pass
+        def connect_ex(self, address): return 0
+    monkeypatch.setattr(services.socket, "socket", OccupiedSocket)
+    with pytest.raises(RuntimeError, match="Port 8765 is occupied"):
+        manager.start("study")

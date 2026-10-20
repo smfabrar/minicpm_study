@@ -29,13 +29,13 @@ The frontend includes editable shadcn component source under `frontend/src/compo
 
 ## Independent GPU pipeline
 
-Follow the [setup guide](../docs/SETUP.md) to install and start both applications
+Follow the [setup guide](../installation/README.md) to install and start both applications
 on the GPU server. The pipeline owns Whisper, Granite, tool execution, native
 MiniCPM injection, Kokoro and output transcription. The generated
 `run-settings.json` supplies server paths and GPU placement for study settings.
 
 For local website development against a remote pipeline, use the optional
-[local development connection](../docs/SETUP.md#local-website-development) in that
+[local development connection](../installation/README.md#local-website-development) in that
 guide. The study backend communicates with the pipeline over HTTP and has no
 model dependencies.
 
@@ -60,7 +60,7 @@ For GPU question preparation, add `"tts_device": "cuda:0"` to an editable study'
 
 Use the **Reference voice WAV on the pipeline server** field to set the path. Click **Save configuration** and wait for **Configuration saved and verified** before reloading or running a case. The form displays persistent save errors and verifies the server's stored values with a fresh read. Advanced settings JSON rejects duplicate keys. Frozen studies require cloning before editing.
 
-For server updates and frontend rebuilds, follow the [update procedure](../docs/SETUP.md#update-an-existing-installation).
+For server updates and frontend rebuilds, follow the [update procedure](../installation/README.md#update-an-existing-installation).
 
 ## Code boundaries
 
@@ -101,4 +101,4 @@ See [the tool designer guide](../docs/TOOL_DESIGNER.md) for the Python function 
 
 Operations has a full queue view and a detail page with requests, remote jobs, progress and captured logs. Export ZIP at the top of a study includes metadata, recorded files, historical inputs, source and execution evidence with a checksum inventory. Delete study moves it to recoverable Trash; active work blocks deletion.
 
-For source, dependency, frontend, and service updates, use the [setup guide](../docs/SETUP.md#update-an-existing-installation).
+For source, dependency, frontend, and service updates, use the [setup guide](../installation/README.md#update-an-existing-installation).

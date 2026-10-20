@@ -3,7 +3,7 @@
 set -euo pipefail
 trap 'printf "Installation stopped at line %s. Fix the error above and rerun.\n" "$LINENO" >&2' ERR
 
-install_root="${PWD}/minicpm-study-install"
+install_root="/workspace/minicpm-study-install"
 study_ref="${SPEECH_STUDY_REF:-main}"
 study_repository="${SPEECH_STUDY_REPOSITORY:-https://github.com/smfabrar/minicpm_study.git}"
 reference_repository="https://github.com/smfabrar/minicpm_tool.git"
@@ -11,31 +11,33 @@ reference_ref="f3e7cdc08cdf49c50414f405f31fc0eee9bca105"
 with_platform=true
 skip_models=false
 dry_run=false
+start_services=true
 build_jobs=2
 cuda_home="/usr/local/cuda-12.5"
 minimum_free_gib="${SPEECH_INSTALL_MIN_FREE_GIB:-}"
 
 usage() {
     cat <<'HELP'
-Usage: bash install.sh [options]
+Usage: bash installation/install.sh [options]
 
 Install the MiniCPM study website and GPU pipeline on Linux x86_64.
 Recommended Vast image: nvidia/cuda:12.5.1-devel-ubuntu24.04 (SSH launch mode).
 An NVIDIA driver and a complete CUDA 12.5 toolkit must already be installed.
 This script does not install CUDA, drivers, or Conda. PyTorch uses a project venv.
 
-  --prefix PATH       Installation directory (default: ./minicpm-study-install)
+  --prefix PATH       Installation directory (default: /workspace/minicpm-study-install)
   --ref REF           Study branch/tag/commit (default: main)
   --cuda-home PATH    Existing CUDA 12.5 toolkit (default: /usr/local/cuda-12.5)
   --jobs N            Native build parallelism (default: 2)
   --runtime-only      Omit website and Node installation
   --skip-models       Install/build first without downloading model weights
+  --no-start          Install without starting services
   --dry-run           Describe steps without downloads or changes
   --help              Show this help
 
 SPEECH_STUDY_REPOSITORY can override the Git clone URL for a private repository.
 SPEECH_SETUP_PYTHON can select an existing Python 3.11/3.12 interpreter.
-SPEECH_INSTALL_MIN_FREE_GIB overrides the free-space floor (30 GiB full, 10 GiB without models).
+SPEECH_INSTALL_MIN_FREE_GIB overrides the free-space floor (30 GiB fresh, 10 GiB without models, 5 GiB on an existing installation).
 HELP
 }
 
@@ -54,6 +56,7 @@ while (($#)); do
             shift 2 ;;
         --runtime-only) with_platform=false; shift ;;
         --skip-models) skip_models=true; shift ;;
+        --no-start) start_services=false; shift ;;
         --dry-run) dry_run=true; shift ;;
         --help|-h) usage; exit 0 ;;
         *) die "Unknown option: $1" ;;
@@ -64,6 +67,7 @@ done
 if [[ -z "$minimum_free_gib" ]]; then
     minimum_free_gib=30
     "$skip_models" && minimum_free_gib=10
+    [[ ! -f "$install_root/runtime/setup-manifest.json" ]] || minimum_free_gib=5
 fi
 [[ "$minimum_free_gib" =~ ^[1-9][0-9]{0,3}$ ]] \
     || die 'SPEECH_INSTALL_MIN_FREE_GIB must be an integer between 1 and 9999'
@@ -81,6 +85,7 @@ if "$dry_run"; then
     "$with_platform" && printf '%s\n' '6. Reuse Node 22.12+, or download a checksum-verified Node 22 build.'
     printf '7. Run package setup; website=%s, download models=%s, build jobs=%s.\n' \
         "$with_platform" "$([[ "$skip_models" == true ]] && printf false || printf true)" "$build_jobs"
+    printf "8. Start services after a full install unless --no-start is set.\n"
     exit 0
 fi
 
@@ -203,21 +208,33 @@ prepare_node() {
     export PATH="$install_root/node/bin:$PATH"
 }
 
+services_stopped=false
+control="$install_root/minicpm_study/installation/internal/services.py"
+if [[ -x "$install_root/runtime/venv/bin/python" && -f "$control" ]]; then
+    "$install_root/runtime/venv/bin/python" "$control" stop --root "$install_root/runtime"
+    services_stopped=true
+fi
 checkout "$install_root/minicpm_study" "$study_repository" "$study_ref"
 checkout "$install_root/minicpm_tool" "$reference_repository" "$reference_ref"
 git -C "$install_root/minicpm_study" rev-parse HEAD > "$install_root/study-revision.txt"
 find_python
-"$setup_python" "$install_root/minicpm_study/tool_pipeline/scripts/cuda_toolkit.py" check "$cuda_home"
+if ! "$services_stopped" && [[ -x "$install_root/runtime/venv/bin/python" && -x "$install_root/runtime/bin/start_runtime.sh" ]]; then
+    "$install_root/runtime/venv/bin/python" "$control" stop --root "$install_root/runtime"
+fi
+"$setup_python" "$install_root/minicpm_study/installation/internal/cuda_toolkit.py" check "$cuda_home"
 "$with_platform" && prepare_node
 
 setup_arguments=(--root "$install_root/runtime" --reference "$install_root/minicpm_tool" \
     --cuda-home "$cuda_home" --jobs "$build_jobs")
 "$with_platform" && setup_arguments+=(--with-platform)
 "$skip_models" && setup_arguments+=(--skip-models)
-SPEECH_SETUP_PYTHON="$setup_python" bash "$install_root/minicpm_study/tool_pipeline/setup_cuda125.sh" "${setup_arguments[@]}"
+"$setup_python" "$install_root/minicpm_study/installation/internal/setup_cuda125.py" "${setup_arguments[@]}"
 
-printf '\nInstallation ready in %s\nStart services in separate terminals:\n' "$install_root"
-"$skip_models" || printf '%q\n' "$install_root/runtime/bin/start_native.sh"
-printf '%q\n' "$install_root/runtime/bin/start_runtime.sh"
-"$with_platform" && printf 'SPEECH_STUDY_PORT=8765 %q\n' "$install_root/runtime/bin/start_study.sh"
-"$skip_models" || printf 'Study settings: %s\n' "$install_root/runtime/run-settings.json"
+control_directory="$install_root/minicpm_study/installation"
+if "$start_services" && ! "$skip_models"; then
+    bash "$control_directory/start.sh" "$install_root/runtime"
+else
+    printf 'Installation prepared. Start when ready: bash %q %q\n' "$control_directory/start.sh" "$install_root/runtime"
+fi
+printf 'Setup guide: %s/README.md\n' "$control_directory"
+"$skip_models" || printf 'Study settings: %s/runtime/run-settings.json\n' "$install_root"

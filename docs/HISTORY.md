@@ -2,7 +2,7 @@
 
 These are records of earlier changes and investigations, not current installation
 instructions. Commands, dependency choices, test counts, and paths below describe
-their original revisions. Follow [SETUP.md](SETUP.md) for current server operations.
+their original revisions. Follow [installation guide](../installation/README.md) for current server operations.
 
 ## Implementation log
 

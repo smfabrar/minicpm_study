@@ -73,11 +73,11 @@ is wrong or the path is missing, check the selected image; do not rerun a CUDA
 cache repair. A missing Python on the bare CUDA image is normal: apt provides
 Ubuntu's Python 3.12 and venv support during installation.
 
-## Install
+## Install and start everything
 
-**Server:** the single downloadable entry point installs the website, pipeline,
-patched native server, and models. Use at least 30 GiB free on the destination
-filesystem; this floor is not a guarantee of enough space for every workload.
+**Server:** this downloads one script, installs the website, pipeline, patched
+native server and model weights, then starts all three services. Keep SSH connected
+until it finishes. The installer checks the toolkit before installing packages.
 
 ```bash
 (
@@ -86,82 +86,79 @@ filesystem; this floor is not a guarantee of enough space for every workload.
   apt-get install -y curl ca-certificates
   mkdir -p /workspace/minicpm-study-install/logs
   curl --fail --location --retry 3 \
-    https://raw.githubusercontent.com/smfabrar/minicpm_study/main/install.sh \
+    https://raw.githubusercontent.com/smfabrar/minicpm_study/main/installation/install.sh \
     --output /tmp/minicpm-study-install.sh
-  bash /tmp/minicpm-study-install.sh \
-    --prefix /workspace/minicpm-study-install \
-    --cuda-home /usr/local/cuda-12.5 \
-    --jobs 2 \
+  bash /tmp/minicpm-study-install.sh --jobs 2 \
     2>&1 | tee /workspace/minicpm-study-install/logs/install.log
 )
 ```
 
-If you already cloned the repository, run its `install.sh` with those same
-arguments. Use `--ref COMMIT` to select an application revision, `--runtime-only`
-to omit the website, or `--skip-models` to defer weights. A fresh `--skip-models`
-installation has no native launcher or run-settings file until setup is completed
-without that flag. `--dry-run` previews the steps without changing files.
+If you already cloned the repository, run `bash installation/install.sh`.
+Defaults are `/workspace/minicpm-study-install` and `/usr/local/cuda-12.5`.
+Use `--prefix PATH` and `--cuda-home PATH` to change them. Begin with two native
+compilation jobs; increasing `--jobs` needs more allocated CPU and host RAM.
 
-Keep SSH connected during installation. Begin with two compilation jobs; more
-jobs require more host RAM and CPU allocation. Setup creates:
+| Option | Effect |
+| --- | --- |
+| `--no-start` | Install everything without starting services |
+| `--skip-models` | Build without downloading weights or starting services; rerun without this flag to finish |
+| `--runtime-only` | Omit the study website |
+| `--ref COMMIT` | Install a specific application revision |
+| `--dry-run` | Describe steps without changing files |
 
-```text
-/workspace/minicpm-study-install/
-  minicpm_study/              application checkout (keep in place)
-  minicpm_tool/               pinned reference checkout
-  node/                      managed Node installation when needed
-  logs/install.log           bootstrap/build output
-  runtime/
-    venv/                    pipeline, models, native gateway dependencies
-    study-venv/              independent study backend environment
-    sources/                 patched native source and official Demo
-    models/                  saved model revisions and download cache
-    bin/                     generated start/restart scripts
-    data/                    study database, recordings and job artifacts
-    logs/                    service logs
-    activate.sh              selected CUDA and runtime environment
-    run-settings.json        server paths, model revisions and GPU placement
-    setup-manifest.json      successful setup's build/dependency evidence
-```
+The free-space floor is 30 GiB for a fresh full install, 10 GiB without weights,
+and 5 GiB when a previous setup manifest exists. These are early checks, not
+storage guarantees. `SPEECH_INSTALL_MIN_FREE_GIB` overrides the floor. Check free
+space on the filesystem holding the prefix, not only `/`.
 
-Python 3.11/3.12 and Node 22.12+ are required. The bootstrap selects a supported
-Python and provisions Node if needed. Native source revisions are pinned; some
-Python dependency ranges, Node downloads, and initial model resolution still
-vary across fresh installs. The complete stack is not yet a published, immutable
-application image.
+The prefix contains application/reference checkouts, optional Node, and `runtime/`.
+Runtime contains the two Python venvs, native sources, models, `data/` for studies
+and recordings, `logs/`, and generated configuration. `runtime/bin/` contains
+internal launchers with installation-specific paths; use the public commands below.
+Keep the application checkout in place because editable packages reference it.
 
-## Start services
+Python 3.11/3.12 and Node 22.12+ are required. The installer selects a supported
+Python and provisions Node when needed. Native revisions are pinned; some Python
+dependencies, Node downloads and first-time model resolution can vary. This is
+not yet a published immutable application image.
 
-After successful setup, run this **once on the server** from a single terminal.
-All services bind to loopback. Duplicate starts will cause port conflicts.
+## Manage services
+
+**Server:** all operational scripts live in `installation/`. They detach services
+from SSH, wait for startup, and keep logs. A successful install already starts them.
 
 ```bash
-run=/workspace/minicpm-study-install/runtime
-mkdir -p "$run/logs"
-
-nohup "$run/bin/start_native.sh" \
-  > "$run/logs/native-service.log" 2>&1 </dev/null &
-nohup "$run/bin/start_runtime.sh" \
-  > "$run/logs/runtime-service.log" 2>&1 </dev/null &
-nohup env SPEECH_STUDY_PORT=8765 "$run/bin/start_study.sh" \
-  > "$run/logs/study-8765.log" 2>&1 </dev/null &
+cd /workspace/minicpm-study-install/minicpm_study
+bash installation/status.sh
 ```
 
-`nohup` survives SSH disconnection, but does not restart processes after a reboot.
-For an optional pipeline bearer token, export the same `SPEECH_RUNTIME_TOKEN`
-before starting both runtime and study services. Fresh defaults use no token.
+| Command | Action |
+| --- | --- |
+| `bash installation/start.sh` | Start the installed stack; ready services are left running |
+| `bash installation/stop.sh` | Stop this installation's stack |
+| `bash installation/restart.sh` | Stop and start the stack |
+| `bash installation/status.sh` | Show service readiness and process IDs |
+| `bash installation/update.sh` | Fetch the selected revision, refresh dependencies/builds, then start |
 
-After startup, check on the **server**:
+Start, stop, restart and status accept `[runtime-directory] [all|native|runtime|study]`.
+For example, restart only native:
 
 ```bash
-curl --fail --max-time 5 http://127.0.0.1:8765/api/health
-curl --fail --max-time 5 http://127.0.0.1:8766/health
-curl --fail --max-time 5 http://127.0.0.1:8000/health
+bash installation/restart.sh /workspace/minicpm-study-install/runtime native
 ```
 
-For a token-protected runtime, its health request also needs an
-`Authorization: Bearer <token>` header. These endpoints check services; they do
-not prove model initialization or audible correctness.
+They match processes belonging to the selected runtime directory, including old
+native launchers. They refuse occupied ports owned by other processes. Concurrent
+service commands are rejected. Services survive SSH disconnection; they do not
+restart automatically after a machine reboot. Run `start.sh` after rebooting.
+
+All services bind to loopback: website 8765, pipeline 8766, native gateway 8000.
+Export `SPEECH_STUDY_PORT` before commands if you change the website port. For an
+optional pipeline bearer token, export the same `SPEECH_RUNTIME_TOKEN` when starting
+runtime and study, and when checking status. Defaults use no token.
+
+Readiness checks cover HTTP endpoints and native worker registration. They do not
+prove model initialization or audible correctness; validate a short study below.
 
 ## Open the website
 
@@ -204,75 +201,35 @@ tool and oracle information, then run B0, B1 and B2. Inspect recordings,
 transcripts, operation logs, telemetry and relevant context acknowledgements
 before queuing a larger study. An acknowledgement establishes delivery, not that
 the model spoke the correct answer. See the [study workflow](../study_platform/README.md)
-and [tool designer](TOOL_DESIGNER.md) for experiment details.
+and [tool designer](../docs/TOOL_DESIGNER.md) for experiment details.
 
 ## Update an existing installation
 
-Finish or cancel active experiments first. The installer uses a detached checkout:
-fetch and check out the desired revision instead of running `git pull`. Preserve
-any local changes before checking out another revision.
+Finish or cancel active experiments first. The update stops existing services and
+uses the same installer, preserving runtime data and cached weights. Native builds
+are incremental; dependency and frontend checks still run. Save tracked local
+changes before updating; the installer refuses to overwrite them.
 
 **Server:**
 
 ```bash
-(
-  set -euo pipefail
-  cd /workspace/minicpm-study-install/minicpm_study
-  git fetch origin main
-  git checkout --detach FETCH_HEAD
-  bash tool_pipeline/update_runtime.sh /workspace/minicpm-study-install/runtime
-  bash study_platform/update_platform.sh /workspace/minicpm-study-install/runtime
-)
-```
-
-The runtime updater uses the installed project venv and committed dependency
-constraints, checks dependencies/audio decoding, and saves resolved versions.
-The platform updater installs the study backend and rebuilds the frontend.
-For only frontend changes, use `study_platform/update_frontend.sh` with the same
-runtime directory. These updaters do not rebuild native CUDA or download models.
-
-Restart runtime and study services after updating; run this in **Bash on the
-server**, after the update succeeds:
-
-```bash
-run=/workspace/minicpm-study-install/runtime
-pkill -TERM -f "$run/venv/bin/[s]peech-runtime" || true
-pkill -TERM -f "$run/study-venv/bin/[s]peech-study" || true
-```
-
-Wait for their logs to confirm shutdown, then rerun just the runtime and study
-`nohup` commands from **Start services**. Reload the browser. Source, dependency,
-or patch changes to the native stack require rerunning setup/build as well.
-
-To restart the native stack after correcting a native failure or rebuilding:
-
-```bash
 cd /workspace/minicpm-study-install/minicpm_study
-bash tool_pipeline/restart_native.sh /workspace/minicpm-study-install/runtime
+bash installation/update.sh --jobs 2
 ```
+
+`update.sh` accepts the same flags as `install.sh`, including `--prefix`,
+`--cuda-home`, `--ref` and `--no-start`. Repeat custom options on each update.
+If migrating from a revision without `installation/`, use the downloadable install
+command above with the same prefix. You do not need a manual Git checkout or
+separate package/frontend updaters. Reload the browser after a successful update.
 
 ## Resume installation and diagnose failures
 
-Preserve `logs/install.log`. Rerun the same installer and prefix after correcting
-the reported cause. If bootstrap already prepared both checkouts and Node,
-resume the lower-level setup without applying the fresh-install disk floor:
-
-```bash
-(
-  set -euo pipefail
-  cd /workspace/minicpm-study-install/minicpm_study
-  PATH="/workspace/minicpm-study-install/node/bin:$PATH" \
-    bash tool_pipeline/setup_cuda125.sh \
-    --root /workspace/minicpm-study-install/runtime \
-    --reference /workspace/minicpm-study-install/minicpm_tool \
-    --cuda-home /usr/local/cuda-12.5 --with-platform --jobs 2 \
-    2>&1 | tee /workspace/minicpm-study-install/logs/setup-resume.log
-)
-```
-
-Enough space for the remaining work is still required. Only continue to startup
-after setup succeeds. A manifest left by an older installation does not prove a
-failed update completed.
+Preserve `logs/install.log` and rerun the downloaded installer with the same prefix
+after correcting the reported cause. Failed setup does not proceed to startup.
+A startup failure preserves service logs; components started earlier may remain
+running. Use `status.sh`, fix the error, then `start.sh` or `restart.sh` as appropriate.
+A manifest left by an older installation does not prove an update completed.
 
 | Symptom | Check |
 | --- | --- |
@@ -283,10 +240,10 @@ failed update completed.
 | SSH channel connection refused | Check `127.0.0.1:8765/api/health` on the server and the tunnel's destination port |
 | Runtime cannot connect to port 8000 | Inspect native logs and restart native after correcting the failure |
 | Reference WAV missing or empty | Inspect saved run settings and verify the server WAV path |
-| Website unchanged | Check source revision, run the platform updater, restart study, then reload |
+| Website unchanged | Check source revision, run `installation/update.sh`, then reload |
 
 Service logs are `runtime/logs/native-service.log`, `runtime-service.log`, and
-`study-8765.log`. The native launch subdirectory contains detailed backend,
+`study-service.log`. The native launch subdirectory contains detailed backend,
 gateway and worker logs. For a failure report, retain these and
 `runtime/setup-manifest.json`, if present, plus the checkout commit.
 

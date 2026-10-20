@@ -51,8 +51,11 @@ can select another complete 12.5 toolkit. Setup, update, and restart helpers use
 website listens on 8765, the pipeline on 8766, and the native gateway on 8000.
 The laptop forwards port 8080 to the server's 8765.
 
-[docs/SETUP.md](docs/SETUP.md) is the single installation, update, and operating
-guide. Package READMEs describe development and application interfaces. Prior
+[installation/README.md](installation/README.md) is the single installation, update, and operating
+guide. All operational scripts are under `installation/`: `install.sh` installs
+and starts the stack, `update.sh` refreshes it, and `start.sh`, `stop.sh`,
+`restart.sh`, and `status.sh` manage services. Helpers and constraints are in
+`installation/internal/`. Package READMEs describe development and application interfaces. Prior
 implementation decisions and verification records are retained in
 [docs/HISTORY.md](docs/HISTORY.md).
 

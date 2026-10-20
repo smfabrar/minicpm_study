@@ -22,7 +22,7 @@ def toolkit_paths(root: Path) -> dict:
             raise RuntimeError(
                 f"Incomplete CUDA toolkit at {root}: missing {name} (including broken symlinks). "
                 "Use nvidia/cuda:12.5.1-devel-ubuntu24.04 or provide a complete toolkit with --cuda-home. "
-                "See docs/SETUP.md; automatic CUDA installation and repair are not supported."
+                "See installation/README.md; automatic CUDA installation and repair are not supported."
             )
         found[name] = str(file)
     return found

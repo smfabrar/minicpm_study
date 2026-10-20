@@ -17,8 +17,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-PIPELINE_DIR = SCRIPT_DIR.parent
-sys.path.insert(0, str(PIPELINE_DIR))
+INSTALLATION_DIR = SCRIPT_DIR.parent
+PROJECT_DIR = INSTALLATION_DIR.parent
+PIPELINE_DIR = PROJECT_DIR / "tool_pipeline"
 sys.path.insert(0, str(SCRIPT_DIR))
 from launch_native import DEMO_REVISION, NATIVE_REVISION  # noqa: E402
 from cuda_toolkit import toolkit_paths  # noqa: E402
@@ -298,14 +299,14 @@ class LaunchFiles:
             path.chmod(0o755)
         if models is None:
             return
-        native_args = [config.python, PIPELINE_DIR / "launch_native.py", "--upstream",
+        native_args = [config.python, SCRIPT_DIR / "launch_native.py", "--upstream",
                        config.upstream, "--demo", config.demo, "--model",
                        Path(models["native"]["path"]) / "MiniCPM-o-4_5-Q4_K_M.gguf",
                        "--patch", config.patch]
         self.script("start_native.sh", native_args, native=True)
         restart = config.root / "bin/restart_native.sh"
         restart.write_text("#!/usr/bin/env bash\nset -euo pipefail\nexec bash " + shlex.join([
-            str(PIPELINE_DIR / "restart_native.sh"), str(config.root),
+            str(INSTALLATION_DIR / "restart.sh"), str(config.root), "native",
         ]) + "\n")
         restart.chmod(0o755)
         settings = self.runner.support(config, "settings", "--models", json.dumps(models),
@@ -384,7 +385,7 @@ def setup(config: SetupConfiguration) -> None:
         (config.root / "study-requirements-resolved.txt").write_text(
             runner.run([study_python, "-m", "pip", "freeze"], capture=True))
     (config.root / "setup-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"Setup complete. Launch scripts: {config.root / 'bin'}")
+    print(f"Setup complete. Service commands: {INSTALLATION_DIR}")
     print("CUDA allocation and dependency checks passed; model inference is not benchmarked by setup.")
 
 

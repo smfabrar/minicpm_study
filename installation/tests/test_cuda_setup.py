@@ -15,7 +15,7 @@ PROJECT = Path(__file__).resolve().parents[1]
 
 
 def load_script(name):
-    specification = importlib.util.spec_from_file_location(name, PROJECT / "scripts" / f"{name}.py")
+    specification = importlib.util.spec_from_file_location(name, PROJECT / "internal" / f"{name}.py")
     module = importlib.util.module_from_spec(specification)
     sys.modules[name] = module
     specification.loader.exec_module(module)
@@ -51,7 +51,7 @@ def repository(directory):
 
 def test_dry_run_does_not_create_installation(tmp_path):
     root = tmp_path / "must stay absent"
-    result = subprocess.run([sys.executable, PROJECT / "scripts/setup_cuda125.py", "--dry-run",
+    result = subprocess.run([sys.executable, PROJECT / "internal/setup_cuda125.py", "--dry-run",
                              "--with-platform", "--root", root], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert "no files, packages or services will be changed" in result.stdout
@@ -207,7 +207,8 @@ def test_generated_native_and_study_scripts_have_valid_shell_and_frozen_settings
     for path in (config.root / "bin").glob("*.sh"):
         subprocess.run(["bash", "-n", path], check=True)
     restart_script = (config.root / "bin/restart_native.sh").read_text()
-    assert "restart_native.sh" in restart_script
+    assert "installation/restart.sh" in restart_script
+    assert restart_script.rstrip().endswith(" native")
     assert shlex.quote(str(config.root)) in restart_script
     settings = json.loads((config.root / "run-settings.json").read_text())
     assert settings["granite_model"] == models["granite"]["path"]
@@ -264,7 +265,7 @@ def test_cuda_headers_and_dangling_libraries_are_rejected(tmp_path):
 
 def test_removed_cuda_repair_command_cannot_mutate_prefix(tmp_path):
     root = tmp_path / "must-stay-absent"
-    result = subprocess.run([sys.executable, PROJECT / "scripts/cuda_toolkit.py", "install", root],
+    result = subprocess.run([sys.executable, PROJECT / "internal/cuda_toolkit.py", "install", root],
                             capture_output=True, text=True)
     assert result.returncode != 0
     assert "invalid choice" in result.stderr

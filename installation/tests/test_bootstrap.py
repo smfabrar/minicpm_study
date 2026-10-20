@@ -44,7 +44,7 @@ def cuda_fixture(root, version="12.5"):
 
 
 def test_bootstrap_dry_run_needs_no_checkout_or_gpu_and_makes_no_files(tmp_path):
-    result = subprocess.run(["bash", ROOT / "install.sh", "--dry-run", "--prefix", tmp_path / "absent"],
+    result = subprocess.run(["bash", ROOT / "installation/install.sh", "--dry-run", "--prefix", tmp_path / "absent"],
                             capture_output=True, text=True, check=True)
     assert "website=true" in result.stdout
     assert "CUDA 12.5" in result.stdout
@@ -54,13 +54,14 @@ def test_bootstrap_dry_run_needs_no_checkout_or_gpu_and_makes_no_files(tmp_path)
 def test_bootstrap_reuses_explicit_toolkit_despite_cuda13_on_path_and_safe_rerun(tmp_path):
     fixture = tmp_path / "source"
     fixture.mkdir()
-    (fixture / "tool_pipeline/scripts").mkdir(parents=True)
-    shutil.copyfile(ROOT / "tool_pipeline/scripts/cuda_toolkit.py", fixture / "tool_pipeline/scripts/cuda_toolkit.py")
-    (fixture / "tool_pipeline/setup_cuda125.sh").write_text(
-        f'#!/usr/bin/env bash\n"$SPEECH_SETUP_PYTHON" -c '
-        + shlex.quote('import json, os, sys; open(os.environ["BOOTSTRAP_CALL"], "w").write(json.dumps({"args": sys.argv[1:], "tmpdir": os.environ["TMPDIR"], "no_cache": os.environ["PIP_NO_CACHE_DIR"]}))')
-        + ' "$@"\n'
+    (fixture / "installation/internal").mkdir(parents=True)
+    shutil.copyfile(ROOT / "installation/internal/cuda_toolkit.py", fixture / "installation/internal/cuda_toolkit.py")
+    (fixture / "installation/internal/setup_cuda125.py").write_text(
+        'import json, os, sys\n'
+        'open(os.environ["BOOTSTRAP_CALL"], "w").write(json.dumps({"args": sys.argv[1:], '
+        '"tmpdir": os.environ["TMPDIR"], "no_cache": os.environ["PIP_NO_CACHE_DIR"]}))\n'
     )
+    (fixture / "installation/start.sh").write_text('echo fixture-services-started\n')
     real_git = shutil.which("git")
     subprocess.run([real_git, "init", "-b", "main", fixture], check=True, capture_output=True)
     for key, value in (("user.name", "Fixture"), ("user.email", "fixture@example.invalid")):
@@ -109,7 +110,7 @@ def test_bootstrap_reuses_explicit_toolkit_despite_cuda13_on_path_and_safe_rerun
         SPEECH_SETUP_PYTHON=sys.executable, CUDA_HOME=str(tmp_path / "cuda13"),
         FIXTURE_SOURCE=str(fixture),
         FIXTURE_NODE=str(node_archive), FIXTURE_CHECKSUMS=str(checksums), BOOTSTRAP_CALL=str(call))
-    command = ["bash", ROOT / "install.sh", "--prefix", prefix, "--cuda-home", cuda, "--skip-models"]
+    command = ["bash", ROOT / "installation/install.sh", "--prefix", prefix, "--cuda-home", cuda, "--skip-models"]
     result = subprocess.run(command, env=environment, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     recorded = json.loads(call.read_text())
@@ -119,7 +120,8 @@ def test_bootstrap_reuses_explicit_toolkit_despite_cuda13_on_path_and_safe_rerun
     assert "--with-platform" in arguments and "--skip-models" in arguments
     assert arguments[arguments.index("--cuda-home") + 1] == str(cuda)
     assert arguments[arguments.index("--root") + 1] == str(prefix / "runtime")
-    assert "SPEECH_STUDY_PORT=8765" in result.stdout
+    assert "Installation prepared. Start when ready:" in result.stdout
+    assert "fixture-services-started" not in result.stdout
     assert not (prefix / "mamba").exists()
     assert not (prefix / "cuda-12.5").exists()
     assert not (tmp_path / "cuda13").exists()
@@ -128,7 +130,13 @@ def test_bootstrap_reuses_explicit_toolkit_despite_cuda13_on_path_and_safe_rerun
     rerun = subprocess.run(command, env=environment, capture_output=True, text=True)
     assert rerun.returncode == 0, rerun.stdout + rerun.stderr
     assert generated_lock.read_text() == "untracked generated fixture"
-    changed = prefix / "minicpm_study/tool_pipeline/setup_cuda125.sh"
+    full = subprocess.run(command[:-1], env=environment, capture_output=True, text=True)
+    assert full.returncode == 0, full.stdout + full.stderr
+    assert "fixture-services-started" in full.stdout
+    no_start = subprocess.run([*command[:-1], "--no-start"], env=environment, capture_output=True, text=True)
+    assert no_start.returncode == 0, no_start.stdout + no_start.stderr
+    assert "fixture-services-started" not in no_start.stdout
+    changed = prefix / "minicpm_study/installation/internal/setup_cuda125.py"
     changed.write_text(changed.read_text() + "# local user edit\n")
     rejected = subprocess.run(command, env=environment, capture_output=True, text=True)
     assert rejected.returncode != 0
@@ -142,7 +150,7 @@ def test_small_install_volume_is_rejected_before_downloads_or_system_changes(tmp
     executable(tools / "uname", '#!/bin/sh\ncase "$1" in -s) echo Linux;; -m) echo x86_64;; esac\n')
     executable(tools / "df", '#!/bin/sh\necho "Filesystem 1024-blocks Used Available Capacity Mounted on"\necho "/small 10485760 10485610 150 100% /workspace"\n')
     prefix = tmp_path / "must not be created"
-    result = subprocess.run(["bash", ROOT / "install.sh", "--prefix", prefix],
+    result = subprocess.run(["bash", ROOT / "installation/install.sh", "--prefix", prefix],
                             env=dict(os.environ, PATH=f"{tools}:{os.environ['PATH']}",
                                      SPEECH_INSTALL_MIN_FREE_GIB="30"),
                             capture_output=True, text=True)
@@ -179,7 +187,7 @@ def test_invalid_host_stops_before_installing_or_downloading(tmp_path, damage, e
         (cuda / "lib/libcudart.so").unlink()
         (cuda / "lib/libcudart.so").symlink_to("missing-library")
     prefix = tmp_path / "installation"
-    result = subprocess.run(["bash", ROOT / "install.sh", "--prefix", prefix, "--cuda-home", cuda],
+    result = subprocess.run(["bash", ROOT / "installation/install.sh", "--prefix", prefix, "--cuda-home", cuda],
                             env=dict(os.environ, PATH=f"{tools}:{os.environ['PATH']}"),
                             capture_output=True, text=True)
     assert result.returncode != 0

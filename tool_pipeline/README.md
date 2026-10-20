@@ -8,7 +8,7 @@ A reference-audio error refers to the configuration saved in that run. The worke
 
 ## Installation and device configuration
 
-Follow the [setup guide](../docs/SETUP.md) for installation, updates, generated
+Follow the [setup guide](../installation/README.md) for installation, updates, generated
 launch scripts, and native-stack startup. Use `--runtime-only` on the bootstrap
 when deploying the pipeline without the study website. The model environment is
 independent of the image's preinstalled PyTorch environment.
@@ -23,10 +23,10 @@ Set `tts_device: "cuda:0"` in the study settings to generate question audio with
 
 The installer builds the patched native server and prepares the official Demo's
 remote backend worker and gateway. Source revisions are declared in
-[launch_native.py](launch_native.py); the build and patch provenance are recorded
+[native launcher](../installation/internal/launch_native.py); the build and patch provenance are recorded
 in `setup-manifest.json`. The complete model snapshot must retain its companion
 `audio/`, `vision/`, `tts/`, and `token2wav-gguf/` directories. Use the generated
-native launcher described in the [setup guide](../docs/SETUP.md).
+native launcher described in the [setup guide](../installation/README.md).
 
 ## HTTP service
 
@@ -133,7 +133,7 @@ No-call, clarification, invalid-call and failed-tool paths continue without cont
 
 For the shortest reading path: `pipeline/runner.py` → `pipeline/context.py` → `pipeline/playback.py`. Read `models/` for model details and `service/` only when working on HTTP/job management. Direct Python and CLI execution do not call the HTTP service.
 
-The [update procedure](../docs/SETUP.md#update-an-existing-installation) refreshes editable packages and console entry points. `from tool_pipeline.pipeline import InferencePipeline`, `speech-infer`, `speech-runtime` and the HTTP endpoints keep the same public usage.
+The [update procedure](../installation/README.md#update-an-existing-installation) refreshes editable packages and console entry points. `from tool_pipeline.pipeline import InferencePipeline`, `speech-infer`, `speech-runtime` and the HTTP endpoints keep the same public usage.
 
 Only `speech_contracts` is shared with the study application. `duplex_tools` is the reference dependency for Granite parsing and deterministic fixture implementations. Model packages are imported lazily by workers.
 
@@ -145,7 +145,7 @@ The pipeline records monotonic nanoseconds, nested step/substep spans, actual ev
 
 ```bash
 python -m pytest tests -q
-python -m compileall -q src launch_native.py
+python -m compileall -q src ../installation/internal
 ```
 
 CPU protocol and timing checks pass. The real TCP fixture is skipped only when the sandbox blocks listening sockets. Actual MiniCPM/Granite/Whisper/Kokoro execution and GPU timing require remote validation; no synthetic test fixture is presented as a study result.
