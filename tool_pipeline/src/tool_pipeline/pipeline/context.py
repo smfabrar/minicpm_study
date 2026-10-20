@@ -1,4 +1,4 @@
-"""Produce context for B1 (tool result) or B2 (saved oracle fact)."""
+"""Produce B1 tool facts/response guidance or B2 saved oracle facts."""
 
 import asyncio
 import uuid
@@ -17,6 +17,15 @@ async def resolve_tool(request: RunRequest, state: RunState, transcriber, caller
         )
         state.action = await caller.decide(state.transcript)
         trace.event("caller.action", **state.action)
+        if state.action["kind"] == "respond":
+            context = {"event_id": uuid.uuid4().hex, "response_text": state.action["message"]}
+            trace.event("caller.response", **context)
+            return context
+        if state.action["kind"] == "invalid":
+            state.tool_error = state.action.get("message") or "Invalid native caller output"
+            trace.event("caller.invalid", error=state.tool_error)
+            return {"event_id": uuid.uuid4().hex,
+                    "response_text": "I couldn't process that request. Could you try again?"}
         if state.action["kind"] != "call":
             return None
 
@@ -28,7 +37,8 @@ async def resolve_tool(request: RunRequest, state: RunState, transcriber, caller
         except Exception as exc:
             state.tool_error = str(exc)
             trace.event("tool.rejected_or_failed", error=state.tool_error)
-            return None
+            return {"event_id": uuid.uuid4().hex,
+                    "response_text": "I couldn't complete that request. Could you try again?"}
 
         context = {**state.tool_result, "event_id": uuid.uuid4().hex}
         trace.event("tool.completed", **context)

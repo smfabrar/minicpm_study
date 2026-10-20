@@ -122,8 +122,8 @@ def test_full_run_preserves_condition_results_and_artifacts(tmp_path, condition)
         assert len(pipeline.native.inputs) - injection - 1 >= 1
 
 
-@pytest.mark.parametrize("kind", ["none", "clarify", "invalid"])
-def test_non_call_action_finishes_without_injection(tmp_path, kind):
+@pytest.mark.parametrize("kind", ["none", "clarify"])
+def test_legacy_non_call_fixture_finishes_without_injection(tmp_path, kind):
     class NoCall(CallerFixture):
         action = {"kind": kind}
 
@@ -135,15 +135,49 @@ def test_non_call_action_finishes_without_injection(tmp_path, kind):
     assert result["context_submitted"] == 0
 
 
-def test_rejected_tool_preserves_error_and_audio_without_injection(tmp_path):
+def test_rejected_tool_preserves_error_and_audio_with_failure_guidance(tmp_path):
     class UngroundedCall(CallerFixture):
         action = {"kind": "call", "tool": "room_lookup", "arguments": {"name": "invented event"}}
 
-    result = asyncio.run(make_pipeline(tmp_path, caller=UngroundedCall).run())
+    pipeline = make_pipeline(tmp_path, caller=UngroundedCall)
+    result = asyncio.run(pipeline.run())
     assert result["status"] == "complete"
     assert "grounded" in result["tool_error"]
-    assert result["context_submitted"] == 0
+    assert result["context_submitted"] == 1
+    contexts = [context for _, context, _ in pipeline.native.inputs if context]
+    assert contexts[0]["response_text"]
+    assert "invented event" not in contexts[0]["response_text"]
+    assert result["tool_result"] is None
     assert result["output_audio"] == "output.wav"
+
+
+def test_native_clarification_text_is_delivered_without_executing_a_tool(tmp_path):
+    class Reply(CallerFixture):
+        action = {"kind": "respond", "message": "Which seminar do you mean?", "raw": "Which seminar do you mean?"}
+
+    pipeline = make_pipeline(tmp_path, caller=Reply)
+    result = asyncio.run(pipeline.run())
+    contexts = [context for _, context, _ in pipeline.native.inputs if context]
+    assert result["status"] == "complete"
+    assert result["tool_result"] is None
+    assert result["tool_error"] is None
+    assert result["context_submitted"] == result["context_evaluated"] == 1
+    assert contexts[0]["response_text"] == "Which seminar do you mean?"
+    assert "facts" not in contexts[0]
+
+
+def test_invalid_native_call_delivers_failure_guidance_and_preserves_error(tmp_path):
+    class Invalid(CallerFixture):
+        action = {"kind": "invalid", "message": "malformed tool call", "raw": "<tool_call>{"}
+
+    pipeline = make_pipeline(tmp_path, caller=Invalid)
+    result = asyncio.run(pipeline.run())
+    contexts = [context for _, context, _ in pipeline.native.inputs if context]
+    assert result["tool_error"] == "malformed tool call"
+    assert result["tool_result"] is None
+    assert result["context_submitted"] == 1
+    assert contexts[0]["response_text"]
+    assert "<tool_call>" not in contexts[0]["response_text"]
 
 
 def test_missing_ack_marks_run_failed_and_retains_audio(tmp_path):

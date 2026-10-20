@@ -1,0 +1,55 @@
+{
+  "name": "MiniCPM Study - CUDA 12.5",
+  "image": "nvidia/cuda",
+  "tag": "12.5.1-devel-ubuntu24.04",
+  "env": "-e SPEECH_STUDY_REF=9cf8e9b62293f1e556d3e446e9fa67c09b8451ff -e SPEECH_BUILD_JOBS=2",
+  "onstart": "#!/usr/bin/env bash\n# Paste this entire file into Vast's On-start Script field (SSH launch mode).\nset -euo pipefail\nprefix=\"${SPEECH_INSTALL_PREFIX:-/workspace/minicpm-study-install}\"\nmkdir -p \"$prefix/logs\"\n# Detach provisioning so a long native build does not hold up the SSH startup hook.\nnohup bash >> \"$prefix/logs/vast-startup.log\" 2>&1 <<'BOOT' &\nset -euo pipefail\nprefix=\"${SPEECH_INSTALL_PREFIX:-/workspace/minicpm-study-install}\"\nref=\"${SPEECH_STUDY_REF:-9cf8e9b62293f1e556d3e446e9fa67c09b8451ff}\"\nrun=\"$prefix/runtime\"\nexec 9>\"$prefix/logs/vast-startup.lock\"\nflock -n 9 || { echo 'Another startup is already running.'; exit 0; }\ntrap 'printf \"Startup failed at line %s. See this log before retrying.\\n\" \"$LINENO\" >&2' ERR\nprintf '\\nMiniCPM Study startup: %s\\n' \"$(date -u +%FT%TZ)\"\nif [[ -f \"$run/setup-manifest.json\" && -x \"$run/bin/start_native.sh\" && -x \"$run/bin/start_runtime.sh\" && -x \"$run/bin/start_study.sh\" ]]; then\n    bash \"$prefix/minicpm_study/installation/start.sh\" \"$run\"\nelse\n    export DEBIAN_FRONTEND=noninteractive\n    if ! command -v curl >/dev/null || [[ ! -f /etc/ssl/certs/ca-certificates.crt ]]; then\n        apt-get update\n        apt-get install -y curl ca-certificates\n    fi\n    installer=\"$prefix/install-download.sh\"\n    curl --fail --location --retry 3 \\\n        \"https://raw.githubusercontent.com/smfabrar/minicpm_study/$ref/installation/install.sh\" \\\n        --output \"$installer.part\"\n    mv \"$installer.part\" \"$installer\"\n    bash \"$installer\" --prefix \"$prefix\" --ref \"$ref\" \\\n        --cuda-home /usr/local/cuda-12.5 --jobs \"${SPEECH_BUILD_JOBS:-2}\"\nfi\nprintf 'MiniCPM Study ready. Forward laptop port 8080 to server port 8765.\\n'\nBOOT\nprintf 'Startup runs in the background. Log: %s/logs/vast-startup.log\\n' \"$prefix\"\n",
+  "runtype": "ssh",
+  "use_ssh": true,
+  "ssh_direct": true,
+  "jup_direct": false,
+  "use_jupyter_lab": false,
+  "private": true,
+  "recommended_disk_space": 100,
+  "extra_filters": {
+    "verified": {
+      "eq": true
+    },
+    "rentable": {
+      "eq": true
+    },
+    "rented": {
+      "eq": false
+    },
+    "num_gpus": {
+      "eq": 1
+    },
+    "gpu_name": {
+      "eq": "RTX 3090"
+    },
+    "cpu_cores_effective": {
+      "gte": 8
+    },
+    "cpu_ram": {
+      "gte": 32000
+    },
+    "disk_space": {
+      "gte": 100
+    },
+    "driver_version": {
+      "gte": 555042002
+    },
+    "direct_port_count": {
+      "gte": 1
+    },
+    "external": {
+      "eq": false
+    },
+    "cpu_arch": {
+      "eq": "amd64"
+    }
+  },
+  "desc": "MiniCPM speech/tool studies. CUDA 12.5, automatic first-boot installation, SSH tunnel, 100 GB disk.",
+  "readme": "# MiniCPM Study\n\nFirst boot installs the website, GPU pipeline, native server and models, then starts them. Later boots start the existing installation. First startup includes CUDA compilation and model downloads and can take a while.\n\nUse one RTX 3090, at least 8 allocated vCPUs, 32 GB RAM and 100 GB disk. The installer uses CUDA 12.5 from this image and its own Python environments. No GPU inference validation has yet been completed for this template.\n\nWatch setup over SSH:\n\n    tail -f /workspace/minicpm-study-install/logs/vast-startup.log\n\nThen forward the website from your laptop:\n\n    ssh -N -p SSH_PORT root@SSH_HOST -L 8080:127.0.0.1:8765\n\nOpen http://127.0.0.1:8080. Use the current instance's SSH host and port.\n\nCopy runtime/run-settings.json into a study's settings. Operations and updates are documented at https://github.com/smfabrar/minicpm_study/blob/main/installation/README.md.\n\nThis template pins application commit 9cf8e9b. That commit must be available in the GitHub repository before first boot. The application and minicpm_tool reference repositories must be readable without interactive login. No credentials are embedded. Container storage is lost when the instance is destroyed; export studies first.\n",
+  "readme_visible": true
+}

@@ -129,7 +129,11 @@ flowchart LR
     G --> I[Save audio, result and telemetry]
 ```
 
-No-call, clarification, invalid-call and failed-tool paths continue without context. B2 also sends no context when its oracle is absent. MiniCPM output is received concurrently throughout replay and context resolution. `RunState` holds the transcript, action, tool result and timestamps collected during one run. The JSON result format is unchanged.
+B1 gives Granite the committed transcript and every attached function schema in one native generation. There is no A–E letter classifier or separate argument-generation pass. A valid native call is parsed, validated, normalized and executed. Plain assistant text, including clarification questions, becomes a `respond` action and is submitted to MiniCPM as response guidance. Invalid calls and failed tools retain their diagnostic error and submit a concise retry response instead of silently dropping the request. Tool facts and response guidance have distinct context payloads; guidance does not populate `tool_result`. Both count toward context submission/evaluation acknowledgements.
+
+B2 sends no context when its oracle is absent. MiniCPM output is received concurrently throughout replay and context resolution. `RunState` holds the transcript, action, tool result and timestamps collected during one run. The result retains the native caller's raw output, and provenance identifies `granite_calling_mode: "native"`. Prompt-format spans retain the rendered Granite prompt, its hash and the supplied tool names so model behavior can be reproduced. The default model remains Granite 4.0 350M, whose JSON-in-`<tool_call>` format the parser supports; newer models with different output formats require their own integration.
+
+Response guidance uses the existing native context extension. A successful ACK confirms delivery, not that MiniCPM spoke the requested text or waited for it before answering. Those behaviors still need GPU/audio validation.
 
 For the shortest reading path: `pipeline/runner.py` → `pipeline/context.py` → `pipeline/playback.py`. Read `models/` for model details and `service/` only when working on HTTP/job management. Direct Python and CLI execution do not call the HTTP service.
 

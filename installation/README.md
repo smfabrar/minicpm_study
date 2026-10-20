@@ -42,6 +42,46 @@ If you already have a server with a complete `/usr/local/cuda-12.5`, you can use
 it without replacing the instance. Another toolkit location can be selected
 explicitly with `--cuda-home`. There is no automatic fallback to a different CUDA.
 
+## Reusable Vast.ai template
+
+The saved template definition is [vast/template.json](vast/template.json), using
+Vast's template API field names. Its startup script is
+[vast/onstart.sh](vast/onstart.sh). The template uses the exact development image,
+SSH mode, private visibility, 100 GB disk, and filters for one RTX 3090 with at
+least 8 allocated vCPUs, 32 GB RAM and driver 555.42.02. The application revision
+is pinned to `9cf8e9b`; make sure this commit is pushed before launching.
+
+On your **laptop**, with the Vast CLI installed and authenticated:
+
+```bash
+cd /path/to/minicpm_study
+python3 installation/vast/create_template.py
+```
+
+This runs `vastai create template` with SSH mode, the exact image tag, filters,
+100 GB disk and the startup script. It creates a private template; it does not
+rent an instance. Use `--dry-run` to inspect the command without contacting Vast.
+CLI credentials remain in your existing local configuration.
+See [Vast's template guide](https://docs.vast.ai/cli/templates).
+
+You can also use Vast's editor: paste the entire `onstart.sh` into **On-start
+Script**, apply the settings above, and choose **Private** then **Create**.
+The JSON is the API representation of those settings. It contains no credentials.
+
+With this template, skip the manual installation command below. First boot runs
+the installer in the background. Subsequent boots start the installed stack
+without updating it. Watch provisioning over SSH:
+
+```bash
+tail -f /workspace/minicpm-study-install/logs/vast-startup.log
+```
+
+Wait for the ready message before opening the SSH tunnel. If provisioning fails,
+correct the cause and rerun the template's startup script. A failed download or
+installation is logged and does not announce readiness. Updates remain an explicit
+`installation/update.sh` operation. Export important studies before destroying an
+instance; the template uses container storage.
+
 ## Connect and verify the image
 
 **Laptop:** substitute the SSH port and host of the current instance.

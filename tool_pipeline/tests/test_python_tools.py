@@ -116,9 +116,17 @@ def test_nested_schema_and_nonfinite_arguments():
             validate_arguments(args, schema)
 
 
-def test_route_options_include_names_and_actual_required_arguments():
+def test_native_caller_can_execute_a_zero_argument_python_tool(tmp_path):
     caller = GraniteCaller.__new__(GraniteCaller)
-    caller.registry = ToolRegistry([python_tool()], TraceRecorder())
-    options = caller._route_options()
-    assert 'current_datetime' in options[2][1]
-    assert 'Required arguments: none' in options[2][1]
+    caller.trace = TraceRecorder()
+    caller.registry = ToolRegistry([python_tool()], caller.trace, tmp_path)
+    def generate(messages, schemas):
+        assert messages[-1]['content'] == 'What time is it?'
+        assert schemas[0]['function']['parameters']['required'] == []
+        return '<tool_call>{"name":"current_datetime","arguments":{}}</tool_call>'
+    caller.generate = generate
+    action = caller.route('What time is it?')
+    assert action['kind'] == 'call'
+    assert action['arguments'] == {}
+    result = asyncio.run(caller.registry.execute(action['tool'], action['arguments'], 'What time is it?'))
+    assert result['facts'] == 'UTC time fixture'

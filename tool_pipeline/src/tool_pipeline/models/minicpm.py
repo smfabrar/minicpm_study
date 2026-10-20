@@ -100,14 +100,19 @@ class NativeSession:
         with self.trace.span("audio.serialize", unit=unit):
             payload = {"audio": float32_payload(pcm)}
             if context:
-                prefix = "External information for the current request: "
-                text = prefix + " ".join(context["facts"].split())
+                if "response_text" in context:
+                    prefix = "Response guidance for the current request. Say the following to the user: "
+                    text = prefix + " ".join(context["response_text"].split())
+                else:
+                    prefix = "External information for the current request: "
+                    text = prefix + " ".join(context["facts"].split())
                 delivered = text.encode("utf-8")[:640].decode("utf-8", "ignore")
                 payload["tool_context"] = delivered
                 self.submitted[unit] = context["event_id"]
                 self.trace.event(
                     "context.payload", event_id=context["event_id"], unit=unit,
                     exact_payload=delivered, truncated=delivered != text,
+                    kind="response" if "response_text" in context else "facts",
                 )
         with self.trace.span("native.input_send", unit=unit, silence=silence):
             await self.ws.send(json.dumps({"type": "input.append", "input": payload}))

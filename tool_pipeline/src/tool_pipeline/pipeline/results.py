@@ -74,6 +74,7 @@ def build_result(
             "hostname": platform.node(),
             "native_session_id": native.session_id if native else None,
             "granite_resolved_revision": granite_revision,
+            "granite_calling_mode": "native" if granite_revision else None,
             "audio_sha256": request.audio_sha256,
             "settings": asdict(request.settings),
             "input_commit_policy": "complete_recording_after_replay",

@@ -1,7 +1,7 @@
-"""Dynamic staged Granite routing using native function-call generation."""
+"""Granite native tool selection and arguments in one generation."""
 
 import asyncio
-import json
+import hashlib
 from pathlib import Path
 
 from speech_contracts import RunSettings
@@ -61,16 +61,21 @@ class GraniteCaller:
             return operation()
 
     def generate(self, messages, schemas):
-        with self.trace.span("granite.prompt_format"):
+        with self.trace.span("granite.prompt_format") as span:
             prompt = self.tokenizer.apply_chat_template(
                 messages, tools=schemas, add_generation_prompt=True, tokenize=False
+            )
+            span.attributes.update(
+                prompt=prompt,
+                prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest(),
+                tool_names=[schema["function"]["name"] for schema in schemas],
             )
         with self.trace.span("granite.tokenize"):
             tokens = self.tokenizer(prompt, add_special_tokens=False, return_tensors="pt")
         tokens = self._operation("granite.input_transfer", lambda: tokens.to(self.model.device))
         with self.torch.inference_mode():
             output = self._operation(
-                "granite.argument_generation",
+                "granite.native_generation",
                 lambda: self.model.generate(
                     **tokens,
                     do_sample=False,
@@ -82,111 +87,47 @@ class GraniteCaller:
             generated_tokens = output[0][tokens["input_ids"].shape[-1]:]
             return self.tokenizer.decode(generated_tokens, skip_special_tokens=False).strip()
 
-    def _route_options(self):
-        options = [
-            ("A", "no action: ordinary conversation, thanks, or unfinished speech", "none"),
-            ("B", "clarification needed: a tool request is missing a required detail", "clarify"),
-        ]
-        if len(self.registry.schemas) > 20:
-            raise ValueError("The bounded router supports at most 20 tools")
-        for i, schema in enumerate(self.registry.schemas):
-            function = schema["function"]
-            parameters = function["parameters"]
-            required = parameters.get("required", [])
-            details = ", ".join(f"{key}: {value.get('description', value.get('type', 'value'))}"
-                                for key, value in parameters.get("properties", {}).items())
-            description = (f"{function['name']}: {function['description']} "
-                           f"Required arguments: {', '.join(required) or 'none'}. {details}")
-            options.append((chr(67 + i), description, function["name"]))
-        return options
-
-    def _score_routes(self, transcript, options):
-        menu = "\n".join(f"{label}: {description}" for label, description, _ in options)
-        with self.trace.span("granite.route_prompt"):
-            messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        "Classify the latest user speech for a tool router. "
-                        "Choose clarification only when a required argument is missing. "
-                        "Tools with no required arguments can run immediately. Return only one label letter."
-                    ),
-                },
-                {"role": "user", "content": f"Labels:\n{menu}\nLatest speech: {transcript}\nLabel:"},
-            ]
-            prompt = self.tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, tokenize=False
-            )
-        with self.trace.span("granite.route_tokenize"):
-            prompt_ids = self.tokenizer(
-                prompt, add_special_tokens=False, return_tensors="pt"
-            )["input_ids"]
-            choices = {
-                label: self.tokenizer(label, add_special_tokens=False, return_tensors="pt")["input_ids"]
-                for label, _, _ in options
-            }
-        prompt_ids = self._operation(
-            "granite.route_transfer", lambda: prompt_ids.to(self.model.device)
-        )
-        choices = {k: v.to(self.model.device) for k, v in choices.items()}
-        def score():
-            torch = self.torch
-            with torch.inference_mode():
-                if all(v.shape[1] == 1 for v in choices.values()):
-                    logits = self.model(input_ids=prompt_ids, use_cache=False).logits[:, -1, :]
-                    scores = torch.log_softmax(logits, dim=-1)
-                    return {k: float(scores[0, v[0, 0]].item()) for k, v in choices.items()}
-                result = {}
-                for label, ids in choices.items():
-                    full = torch.cat((prompt_ids, ids), dim=1)
-                    logits = self.model(input_ids=full, use_cache=False).logits
-                    offset = prompt_ids.shape[1] - 1
-                    probs = torch.log_softmax(logits[:, offset:offset + ids.shape[1], :], dim=-1)
-                    result[label] = float(probs.gather(-1, ids.unsqueeze(-1)).mean().item())
-                return result
-        return self._operation("granite.route_scoring", score)
-
     def route(self, transcript):
-        options = self._route_options()
-        scores = self._score_routes(transcript, options)
-        ordered = sorted(scores, key=scores.get, reverse=True)
-        selected = next(action for label, _, action in options if label == ordered[0])
-        routing = {
-            "selected": ordered[0],
-            "selected_action": selected,
-            "options": {label: {"description": description, "action": action}
-                        for label, description, action in options},
-            "scores": scores,
-            "margin": scores[ordered[0]] - scores[ordered[1]],
-        }
-        self.trace.event("caller.route", **routing)
-        if selected in {"none", "clarify"}:
-            return {"kind": selected, "routing": routing, "raw": json.dumps(routing)}
-        schema = next(s for s in self.registry.schemas if s["function"]["name"] == selected)
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "Call the provided tool. Copy only details explicitly present in the user "
-                    "speech. Omit optional arguments that were not provided. "
+                    "Use an appropriate provided tool when the user requests a lookup, search, "
+                    "calculation, or another operation covered by a tool. "
+                    "Copy only argument details explicitly present in the user speech. "
+                    "Omit optional arguments that were not provided. "
                     "For a tool with no parameters, use an empty arguments object. "
-                    "Output only the native tool call."
+                    "Return at most one native tool call, without surrounding prose. "
+                    "If a required detail is missing, ask a concise clarification question "
+                    "in plain text instead of inventing an argument. "
+                    "For ordinary conversation, respond concisely in plain text."
                 ),
             },
             {"role": "user", "content": transcript},
         ]
-        raw = self.generate(messages, [schema])
+        raw = self.generate(messages, self.registry.schemas)
         with self.trace.span("granite.parse_output", raw=raw):
             action = reference_module("caller").parse_granite_output(raw)
-            if action.kind != "call" or action.tool != selected:
+            if action.kind == "call":
+                if action.tool not in self.registry.definitions:
+                    return {"kind": "invalid", "raw": raw, "message": "Tool is not allowlisted"}
                 return {
-                    "kind": "invalid", "raw": raw, "routing": routing,
-                    "message": "Argument generation did not call the selected tool",
+                    "kind": "call", "tool": action.tool, "arguments": dict(action.arguments),
+                    "raw": raw,
                 }
-            return {
-                "kind": "call", "tool": selected, "arguments": dict(action.arguments),
-                "raw": raw, "routing": routing,
+            message = raw.strip()
+            for suffix in ("<|end_of_text|>", "<|end_of_turn|>"):
+                if message.endswith(suffix):
+                    message = message.removesuffix(suffix).strip()
+            plain_reply = action.kind == "invalid" and action.message in {
+                "unstructured caller output", "unknown caller action",
             }
+            control_markers = ("<|", "<tool_call", "</tool_call", "<think>", "<function=", "<parameter=")
+            if (message and plain_reply and not message.startswith(("{", "["))
+                    and not any(marker in message for marker in control_markers)):
+                return {"kind": "respond", "message": message, "raw": raw}
+            return {"kind": "invalid", "raw": raw,
+                    "message": action.message or "Expected a native tool call or plain assistant response"}
 
     async def decide(self, transcript):
         with self.trace.span("caller.total"):

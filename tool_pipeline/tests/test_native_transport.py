@@ -15,6 +15,22 @@ from speech_contracts import RunRequest
 
 
 class TransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_plain_caller_reply_is_sent_as_response_guidance(self):
+        from unittest.mock import AsyncMock
+
+        with tempfile.TemporaryDirectory() as directory:
+            session = NativeSession(RunSettings(), TraceRecorder(), Path(directory))
+            session.ws = AsyncMock()
+            await session.send(bytes(32000), context={
+                'event_id': 'reply', 'response_text': 'Which seminar do you mean?',
+            })
+            message = json.loads(session.ws.send.call_args.args[0])
+            payload = message['input']['tool_context']
+            assert 'Which seminar do you mean?' in payload
+            assert 'Say' in payload
+            assert not payload.startswith('External information')
+            assert session.submitted == {1: 'reply'}
+
     async def test_reference_errors_distinguish_empty_settings_from_missing_files(self):
         from unittest.mock import patch
 
