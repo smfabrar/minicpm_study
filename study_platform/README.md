@@ -25,22 +25,19 @@ speech-study --data ./data/platform
 
 Open `http://127.0.0.1:8765`. FastAPI serves `frontend/dist`; `/docs` provides the API reference. For a frontend development session, run `npm run dev` in `frontend` while FastAPI runs; Vite proxies `/api`. An installed wheel can use `SPEECH_STUDY_FRONTEND=/absolute/path/to/frontend/dist`.
 
-The frontend includes editable shadcn component source under `frontend/src/components/ui`, `components.json`, and `npm run ui:add -- component-name`. The optional shadcn agent skill was not installed here because package downloads were blocked; the application does not require that skill to run. Run `npm run format` for Prettier formatting.
+The frontend includes editable shadcn component source under `frontend/src/components/ui`, `components.json`, and `npm run ui:add -- component-name`. Run `npm run format` for Prettier formatting.
 
 ## Independent GPU pipeline
 
-Install and start the sibling [tool_pipeline project](../tool_pipeline/README.md) on the GPU server. That project owns Whisper, Granite, tool execution, native MiniCPM injection, Kokoro and output transcription. Clone `minicpm_study` and the `minicpm_tool` reference as adjacent repositories, as shown in the [root README](../README.md). A pipeline-only server installs `tool_pipeline` and `speech_contracts` without installing the study application.
+Follow the [setup guide](../docs/SETUP.md) to install and start both applications
+on the GPU server. The pipeline owns Whisper, Granite, tool execution, native
+MiniCPM injection, Kokoro and output transcription. The generated
+`run-settings.json` supplies server paths and GPU placement for study settings.
 
-For CUDA 12.5, follow the [server setup guide](../tool_pipeline/CUDA125_SETUP.md). Its optional `--with-platform` flag builds this website and installs this backend in a separate Python environment on the same server. Paste its generated `run-settings.json` into study settings before preparing or freezing inputs.
-
-Open an SSH tunnel locally and start the study backend with the same bearer token:
-
-```bash
-ssh -N -L 8766:127.0.0.1:8766 your-gpu-server
-# In a separate terminal, with the local study environment active:
-export SPEECH_RUNTIME_TOKEN='your-shared-token'
-speech-study --data ./data/platform
-```
+For local website development against a remote pipeline, use the optional
+[local development connection](../docs/SETUP.md#local-website-development) in that
+guide. The study backend communicates with the pipeline over HTTP and has no
+model dependencies.
 
 Runtime → Check health connects to `http://127.0.0.1:8766`. Each inference submission sends one audio recording and its saved configuration. The pipeline executes every inference step and returns output audio, events and telemetry. The study backend polls jobs and collects artifacts; it does not advance inference, execute tools or inject results.
 
@@ -63,7 +60,7 @@ For GPU question preparation, add `"tts_device": "cuda:0"` to an editable study'
 
 Use the **Reference voice WAV on the pipeline server** field to set the path. Click **Save configuration** and wait for **Configuration saved and verified** before reloading or running a case. The form displays persistent save errors and verifies the server's stored values with a fresh read. Advanced settings JSON rejects duplicate keys. Frozen studies require cloning before editing.
 
-After updating source, rebuild the installed website with `bash study_platform/update_frontend.sh /workspace/minicpm-study-install/runtime` and reload the browser. The helper finds the bootstrap's Node installation, installs frontend dependencies, runs settings checks, and builds the static assets. Frontend code changes require this build step; the Python runtime dependency updater does not build the website.
+For server updates and frontend rebuilds, follow the [update procedure](../docs/SETUP.md#update-an-existing-installation).
 
 ## Code boundaries
 
@@ -104,16 +101,4 @@ See [the tool designer guide](../docs/TOOL_DESIGNER.md) for the Python function 
 
 Operations has a full queue view and a detail page with requests, remote jobs, progress and captured logs. Export ZIP at the top of a study includes metadata, recorded files, historical inputs, source and execution evidence with a checksum inventory. Delete study moves it to recoverable Trash; active work blocks deletion.
 
-The downloadable installer uses a detached checkout. Update it with fetch and checkout rather than `git pull`:
-
-For an existing server installation:
-
-```bash
-cd /workspace/minicpm-study-install/minicpm_study
-git fetch origin main
-git checkout --detach FETCH_HEAD
-bash tool_pipeline/update_runtime.sh /workspace/minicpm-study-install/runtime
-bash study_platform/update_platform.sh /workspace/minicpm-study-install/runtime
-```
-
-Restart the study and runtime API services after these updates, then reload the browser. Keep the study service on port 8765 if local port 8080 is already occupied. The native CUDA stack does not need rebuilding for these application changes. Existing SQLite records load with defaults for new fields; no manual database migration is required.
+For source, dependency, frontend, and service updates, use the [setup guide](../docs/SETUP.md#update-an-existing-installation).

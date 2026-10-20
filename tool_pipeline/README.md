@@ -6,56 +6,27 @@ The study application submits audio and configuration once. This package owns re
 
 A reference-audio error refers to the configuration saved in that run. The worker reports whether `reference_audio` is empty or its file is missing, including the checked path and runtime hostname for missing files. Inspect the failed run's **Request & provenance** settings; changing the study's settings affects newly created runs. The WAV must be accessible to the pipeline worker's host.
 
-## Installation on the GPU server
+## Installation and device configuration
 
-For Linux NVIDIA servers with CUDA 12.5, use the [setup script and launch guide](CUDA125_SETUP.md):
+Follow the [setup guide](../docs/SETUP.md) for installation, updates, generated
+launch scripts, and native-stack startup. Use `--runtime-only` on the bootstrap
+when deploying the pipeline without the study website. The model environment is
+independent of the image's preinstalled PyTorch environment.
 
-```bash
-bash tool_pipeline/setup_cuda125.sh --install-system-deps
-# Add --with-platform to install the website in a separate environment too.
-```
-
-Run this from the copied project parent directory. It checks the existing driver/toolkit, installs constrained model dependencies, builds the patched native runtime, downloads pinned model snapshots and generates launch scripts and run settings. No GPU execution has been verified on this development machine.
-
-Clone `minicpm_study` and the reference `minicpm_tool` as adjacent repositories. This package and `speech_contracts` live inside `minicpm_study`; the reference lives one level above them. Use Python 3.11 or 3.12 and the server's CUDA-compatible Torch build.
-
-```bash
-cd tool_pipeline
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ../speech_contracts
-python -m pip install -e '.[models,dev]'
-python -m pip install -e ../../minicpm_tool
-```
-
-Install `espeak-ng` for Kokoro English synthesis. Granite and Whisper default to GPU 1. For a one-GPU server use `granite_device: "cuda:0"` and `whisper_device_index: 0`, with enough remaining memory beside MiniCPM. Plain `pip install -e .` installs only service/transport dependencies; `.[models]` installs model dependencies.
-
-The models extra constrains PyAV to versions below 19 for Faster Whisper's released audio-decoding API. See the [server guide](CUDA125_SETUP.md) for repairing an existing installation with the `metadata_errors` keyword error.
+The generated `run-settings.json` selects GPU 0 on a single-GPU server. Use those
+settings rather than assuming a second GPU exists. A configured reference WAV
+must be accessible on the pipeline server.
 
 Set `tts_device: "cuda:0"` in the study settings to generate question audio with Kokoro on GPU 0. Supported values are `cpu`, `cuda` (the current CUDA device), and `cuda:<index>`. Existing settings without this field keep CPU synthesis; the GPU installer generates an explicit CUDA setting. A requested unavailable GPU fails the job instead of silently using CPU. Model execution uses float32; text processing, resampling and file storage remain on CPU. Preparation traces include device setup, synchronized model loading and synthesis, and the actual device is saved in audio provenance. GPU synthesis has a separate cache identity; previously attached recordings remain unchanged.
 
 ## Native MiniCPM stack
 
-Prepare the reference's pinned [live duplex setup](https://github.com/smfabrar/minicpm_tool/blob/f3e7cdc08cdf49c50414f405f31fc0eee9bca105/docs/live_duplex_protocol.md) and [setup notebook](https://github.com/smfabrar/minicpm_tool/blob/f3e7cdc08cdf49c50414f405f31fc0eee9bca105/notebooks/kaggle_live_duplex.ipynb), or build the same sources manually:
-
-- Native `tc-mb/llama.cpp-omni` revision `873056743b74e1a4ce5dcf7290e2298428e214db`.
-- Gateway/worker `OpenBMB/MiniCPM-o-Demo` revision `47709a9210dfd71afa76c058e017fc8c4db5c8d2`.
-- Apply `minicpm_tool/fixtures/realtime-tool-context.patch` to the native checkout.
-- Build `llama-omni-server` with CUDA, `GGML_CUDA_NO_VMM=ON`, `LLAMA_OPENSSL=OFF`, and your GPU architecture. The reference uses architecture 75 for T4. Install the official Demo's gateway/worker dependencies separately.
-- Download the complete `openbmb/MiniCPM-o-4_5-gguf` module layout: main Q4_K_M model plus vision, audio, TTS, projector and token2wav modules listed in the notebook.
-
-Start the prepared stack:
-
-```bash
-python launch_native.py \
-  --upstream /srv/llama.cpp-omni \
-  --demo /srv/MiniCPM-o-Demo \
-  --model /srv/models/MiniCPM-o-4_5-gguf/MiniCPM-o-4_5-Q4_K_M.gguf \
-  --patch /srv/projects/minicpm_tool/fixtures/realtime-tool-context.patch \
-  --logs /srv/native-runs/session-01
-```
-
-Use a fresh log directory. The launcher verifies source revisions and the applied patch, starts the backend/gateway/worker, registers the worker and writes a manifest. It checks sources, not that an existing binary was rebuilt from them: build after patching and retain build evidence. Put its printed `native_url`, `reference_audio` and `patch_sha256` into your request settings. Paths refer to this server.
+The installer builds the patched native server and prepares the official Demo's
+remote backend worker and gateway. Source revisions are declared in
+[launch_native.py](launch_native.py); the build and patch provenance are recorded
+in `setup-manifest.json`. The complete model snapshot must retain its companion
+`audio/`, `vision/`, `tts/`, and `token2wav-gguf/` directories. Use the generated
+native launcher described in the [setup guide](../docs/SETUP.md).
 
 ## HTTP service
 
@@ -162,7 +133,7 @@ No-call, clarification, invalid-call and failed-tool paths continue without cont
 
 For the shortest reading path: `pipeline/runner.py` → `pipeline/context.py` → `pipeline/playback.py`. Read `models/` for model details and `service/` only when working on HTTP/job management. Direct Python and CLI execution do not call the HTTP service.
 
-After updating an existing installation to this layout, refresh the console entry points using that environment's Python: `python -m pip install --no-deps -e /path/to/tool_pipeline`. The setup script also does this. `from tool_pipeline.pipeline import InferencePipeline`, `speech-infer`, `speech-runtime` and the HTTP endpoints keep the same public usage.
+The [update procedure](../docs/SETUP.md#update-an-existing-installation) refreshes editable packages and console entry points. `from tool_pipeline.pipeline import InferencePipeline`, `speech-infer`, `speech-runtime` and the HTTP endpoints keep the same public usage.
 
 Only `speech_contracts` is shared with the study application. `duplex_tools` is the reference dependency for Granite parsing and deterministic fixture implementations. Model packages are imported lazily by workers.
 

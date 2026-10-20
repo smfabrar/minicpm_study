@@ -280,6 +280,7 @@ class LaunchFiles:
         library_paths = ":".join(probe["library_paths"])
         activation = (f"source {shlex.quote(str(config.root / 'venv/bin/activate'))}\n"
                       f"export CUDA_HOME={shlex.quote(str(config.cuda_home))}\n"
+                      f"export PATH={shlex.quote(str(config.cuda_home / 'bin'))}:\"$PATH\"\n"
                       f"export HF_HOME={shlex.quote(str(config.root / 'models/cache'))}\n"
                       f"export LD_LIBRARY_PATH={shlex.quote(library_paths)}${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}\n")
         (config.root / "activate.sh").write_text("# Source this file in bash.\n" + activation)
@@ -389,8 +390,8 @@ def setup(config: SetupConfiguration) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=PIPELINE_DIR / ".gpu",
-                        help="Dedicated setup directory (default: tool_pipeline/.gpu)")
+    parser.add_argument("--root", type=Path, default=Path("/workspace/minicpm-study-install/runtime"),
+                        help="Runtime directory (default: /workspace/minicpm-study-install/runtime)")
     nested_reference = PIPELINE_DIR.parent / "minicpm_tool"
     default_reference = (
         nested_reference if nested_reference.is_dir() else PIPELINE_DIR.parent.parent / "minicpm_tool"

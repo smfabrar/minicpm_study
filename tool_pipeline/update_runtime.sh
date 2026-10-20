@@ -23,4 +23,4 @@ source "$runtime_root/activate.sh"
 "$runtime_python" -m pip check
 "$runtime_python" "$script_dir/scripts/gpu_setup_support.py" verify-audio
 "$runtime_python" -m pip freeze >"$runtime_root/requirements-resolved.txt"
-printf '%s\n' 'Runtime dependencies updated and audio decoding verified. Start a new study run.'
+printf '%s\n' 'Runtime dependencies updated and audio decoding verified. Restart the runtime service before starting a new study run; see docs/SETUP.md.'

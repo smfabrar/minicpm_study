@@ -11,6 +11,8 @@ import sys
 import tarfile
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -31,6 +33,16 @@ def archive_bytes(files, compression):
     return output.getvalue()
 
 
+def cuda_fixture(root, version="12.5"):
+    (root / "bin").mkdir(parents=True)
+    executable(root / "bin/nvcc", f'#!/bin/sh\necho "Cuda compilation tools, release {version}, V{version}"\n')
+    for relative in ("include/cuda_runtime.h", "include/cuda.h", "include/cublas_v2.h",
+                     "lib/libcudart.so", "lib/libcublas.so"):
+        path = root / relative
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("CUDA layout fixture, not a GPU binary")
+
+
 def test_bootstrap_dry_run_needs_no_checkout_or_gpu_and_makes_no_files(tmp_path):
     result = subprocess.run(["bash", ROOT / "install.sh", "--dry-run", "--prefix", tmp_path / "absent"],
                             capture_output=True, text=True, check=True)
@@ -39,7 +51,7 @@ def test_bootstrap_dry_run_needs_no_checkout_or_gpu_and_makes_no_files(tmp_path)
     assert not (tmp_path / "absent").exists()
 
 
-def test_bootstrap_download_dispatch_cuda13_and_safe_rerun(tmp_path):
+def test_bootstrap_reuses_explicit_toolkit_despite_cuda13_on_path_and_safe_rerun(tmp_path):
     fixture = tmp_path / "source"
     fixture.mkdir()
     (fixture / "tool_pipeline/scripts").mkdir(parents=True)
@@ -60,7 +72,7 @@ def test_bootstrap_download_dispatch_cuda13_and_safe_rerun(tmp_path):
     tools.mkdir()
     executable(tools / "uname", '#!/bin/sh\ncase "$1" in -s) echo Linux;; -m) echo x86_64;; esac\n')
     executable(tools / "df", '#!/bin/sh\necho "Filesystem 1024-blocks Used Available Capacity Mounted on"\necho "/fixture 62914560 10485760 52428800 17% /fixture"\n')
-    executable(tools / "nvidia-smi", '#!/bin/sh\necho "CPU fixture: NVIDIA driver 580, not a GPU measurement"\n')
+    executable(tools / "nvidia-smi", '#!/bin/sh\necho "580.159.03"\n')
     executable(tools / "apt-get", '#!/bin/sh\nexit 0\n')
     executable(tools / "sudo", '#!/bin/sh\nexec "$@"\n')
     executable(tools / "nvcc", '#!/bin/sh\necho "Cuda compilation tools, release 13.0, V13.0"\n')
@@ -72,28 +84,8 @@ def test_bootstrap_download_dispatch_cuda13_and_safe_rerun(tmp_path):
         '    i = a.index("origin", a.index("fetch")); a[i:] = [os.environ["FIXTURE_SOURCE"], "main"]\n'
         f'sys.exit(subprocess.call([{real_git!r}, *a]))\n')
 
-    micromamba = f'''#!{sys.executable}
-import json, os, pathlib, sys
-args = sys.argv[1:]
-if "--version" in args:
-    print("Fixture micromamba")
-    sys.exit(0)
-with open(os.environ["FIXTURE_MAMBA_CALLS"], "a") as stream:
-    stream.write(json.dumps(args) + "\\n")
-prefix = pathlib.Path(args[args.index('--prefix') + 1])
-(prefix / 'bin').mkdir(parents=True, exist_ok=True)
-(prefix / 'conda-meta').mkdir(exist_ok=True)
-for relative in ('include/cuda_runtime.h', 'include/cuda.h', 'include/cublas_v2.h',
-                 'lib/libcudart.so', 'lib/libcublas.so'):
-    path = prefix / relative
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('CUDA layout fixture, not a compiler or library')
-compiler = prefix / 'bin/nvcc'
-compiler.write_text('#!/bin/sh\\necho "Cuda compilation tools, release 12.5, V12.5"\\n')
-compiler.chmod(0o755)
-'''
-    micromamba_archive = tmp_path / "micromamba.tar.bz2"
-    micromamba_archive.write_bytes(archive_bytes({"bin/micromamba": micromamba}, "bz2"))
+    cuda = tmp_path / "existing CUDA 12.5"
+    cuda_fixture(cuda)
     node_name = "node-v22.14.0-linux-x64.tar.xz"
     node_archive = tmp_path / node_name
     node_archive.write_bytes(archive_bytes({
@@ -104,8 +96,8 @@ compiler.chmod(0o755)
     checksums.write_text(hashlib.sha256(node_archive.read_bytes()).hexdigest() + "  " + node_name + "\n")
     executable(tools / "curl", f'#!{sys.executable}\n'
         'import os, pathlib, shutil, sys\na=sys.argv[1:]; url=a[-1]; output=a[a.index("--output")+1]\n'
-        'source = "FIXTURE_MICROMAMBA" if "micro.mamba" in url else '
-        '("FIXTURE_CHECKSUMS" if url.endswith("SHASUMS256.txt") else "FIXTURE_NODE")\n'
+        'assert "nodejs.org" in url, "Unexpected installer download: " + url\n'
+        'source = "FIXTURE_CHECKSUMS" if url.endswith("SHASUMS256.txt") else "FIXTURE_NODE"\n'
         'shutil.copyfile(os.environ[source], output)\n')
     executable(tools / "sha256sum", f'#!{sys.executable}\n'
         'import hashlib, pathlib, sys\n'
@@ -115,10 +107,9 @@ compiler.chmod(0o755)
     call = tmp_path / "call.json"
     environment = dict(os.environ, PATH=f"{tools}:{os.environ['PATH']}",
         SPEECH_SETUP_PYTHON=sys.executable, CUDA_HOME=str(tmp_path / "cuda13"),
-        FIXTURE_SOURCE=str(fixture), FIXTURE_MICROMAMBA=str(micromamba_archive),
-        FIXTURE_NODE=str(node_archive), FIXTURE_CHECKSUMS=str(checksums), BOOTSTRAP_CALL=str(call),
-        FIXTURE_MAMBA_CALLS=str(tmp_path / "mamba-calls.jsonl"))
-    command = ["bash", ROOT / "install.sh", "--prefix", prefix, "--skip-models"]
+        FIXTURE_SOURCE=str(fixture),
+        FIXTURE_NODE=str(node_archive), FIXTURE_CHECKSUMS=str(checksums), BOOTSTRAP_CALL=str(call))
+    command = ["bash", ROOT / "install.sh", "--prefix", prefix, "--cuda-home", cuda, "--skip-models"]
     result = subprocess.run(command, env=environment, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     recorded = json.loads(call.read_text())
@@ -126,32 +117,17 @@ compiler.chmod(0o755)
     assert recorded["tmpdir"] == str(prefix / "tmp")
     assert recorded["no_cache"] == "1"
     assert "--with-platform" in arguments and "--skip-models" in arguments
-    assert arguments[arguments.index("--cuda-home") + 1] == str(prefix / "cuda-12.5")
+    assert arguments[arguments.index("--cuda-home") + 1] == str(cuda)
     assert arguments[arguments.index("--root") + 1] == str(prefix / "runtime")
-    assert "SPEECH_STUDY_PORT=8080" in result.stdout
+    assert "SPEECH_STUDY_PORT=8765" in result.stdout
+    assert not (prefix / "mamba").exists()
+    assert not (prefix / "cuda-12.5").exists()
     assert not (tmp_path / "cuda13").exists()
     generated_lock = prefix / "minicpm_study/generated-lock.json"
     generated_lock.write_text("untracked generated fixture")
     rerun = subprocess.run(command, env=environment, capture_output=True, text=True)
     assert rerun.returncode == 0, rerun.stdout + rerun.stderr
     assert generated_lock.read_text() == "untracked generated fixture"
-    # A valid nvcc must not hide missing development payloads on a rerun.
-    cuda = prefix / "cuda-12.5"
-    header = cuda / "include/cuda_runtime.h"
-    header.unlink()
-    metadata = {"name": "cuda-cudart-dev_linux-64", "version": "12.5.82", "build": "0",
-                "channel": "https://conda.anaconda.org/nvidia/label/cuda-12.5.1/noarch",
-                "files": ["include/cuda_runtime.h"]}
-    (cuda / "conda-meta/cuda-cudart-dev_linux-64-12.5.82-0.json").write_text(json.dumps(metadata))
-    repaired = subprocess.run(command, env=environment, capture_output=True, text=True)
-    assert repaired.returncode == 0, repaired.stdout + repaired.stderr
-    assert "Repairing 1 CUDA packages" in repaired.stdout
-    assert header.is_file()
-    mamba_calls = [json.loads(line) for line in (tmp_path / "mamba-calls.jsonl").read_text().splitlines()]
-    assert "--force-reinstall" in mamba_calls[-1]
-    assert "--strict-channel-priority" in mamba_calls[-1]
-    assert "cuda-cudart-dev_linux-64=12.5.82=0" in mamba_calls[-1]
-    assert "cuda-toolkit=12.5.1" in mamba_calls[-1]
     changed = prefix / "minicpm_study/tool_pipeline/setup_cuda125.sh"
     changed.write_text(changed.read_text() + "# local user edit\n")
     rejected = subprocess.run(command, env=environment, capture_output=True, text=True)
@@ -173,4 +149,40 @@ def test_small_install_volume_is_rejected_before_downloads_or_system_changes(tmp
     assert result.returncode != 0
     assert "Not enough disk space" in result.stderr
     assert "30 GiB" in result.stdout
+    assert not prefix.exists()
+
+
+@pytest.mark.parametrize("damage,expected", [
+    ("version", "must be CUDA 12.5"),
+    ("compiler", "Missing"),
+    ("header", "missing cuda_runtime.h"),
+    ("library", "missing libcudart.so"),
+    ("driver", "below the required"),
+])
+def test_invalid_host_stops_before_installing_or_downloading(tmp_path, damage, expected):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    marker = tmp_path / "unexpected-mutation"
+    executable(tools / "uname", '#!/bin/sh\ncase "$1" in -s) echo Linux;; -m) echo x86_64;; esac\n')
+    executable(tools / "df", '#!/bin/sh\necho "Filesystem 1024-blocks Used Available Capacity Mounted on"\necho "/fixture 99999999 0 99999999 0% /fixture"\n')
+    driver = "550.54.15" if damage == "driver" else "580.159.03"
+    executable(tools / "nvidia-smi", f'#!/bin/sh\necho "{driver}"\n')
+    for name in ("apt-get", "curl", "git", "micromamba"):
+        executable(tools / name, f'#!/bin/sh\ntouch {shlex.quote(str(marker))}\nexit 1\n')
+    cuda = tmp_path / "toolkit"
+    cuda_fixture(cuda, "13.0" if damage == "version" else "12.5")
+    if damage == "compiler":
+        (cuda / "bin/nvcc").unlink()
+    elif damage == "header":
+        (cuda / "include/cuda_runtime.h").unlink()
+    elif damage == "library":
+        (cuda / "lib/libcudart.so").unlink()
+        (cuda / "lib/libcudart.so").symlink_to("missing-library")
+    prefix = tmp_path / "installation"
+    result = subprocess.run(["bash", ROOT / "install.sh", "--prefix", prefix, "--cuda-home", cuda],
+                            env=dict(os.environ, PATH=f"{tools}:{os.environ['PATH']}"),
+                            capture_output=True, text=True)
+    assert result.returncode != 0
+    assert expected in result.stderr
+    assert not marker.exists()
     assert not prefix.exists()

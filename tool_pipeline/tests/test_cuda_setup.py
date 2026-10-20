@@ -123,7 +123,7 @@ def test_generated_runtime_script_preserves_literal_paths_and_existing_environme
     recorder = binary / "speech-runtime"
     recorder.write_text(f"#!{sys.executable}\nimport json, os, sys\n"
                         "print(json.dumps({'args': sys.argv[1:], 'hf': os.environ['HF_HOME'], "
-                        "'libs': os.environ['LD_LIBRARY_PATH'], 'active': os.environ['SETUP_ACTIVATED']}))\n")
+                        "'libs': os.environ['LD_LIBRARY_PATH'], 'active': os.environ['SETUP_ACTIVATED'], 'path': os.environ['PATH']}))\n")
     recorder.chmod(0o755)
     setup.LaunchFiles(config, setup.CommandRunner(dict(os.environ))).write(
         {"library_paths": [str(root / "cublas/lib"), str(root / "cudnn/lib")], "devices": []}, None)
@@ -135,6 +135,7 @@ def test_generated_runtime_script_preserves_literal_paths_and_existing_environme
     assert recorded["hf"] == str(root / "models/cache")
     assert recorded["libs"].endswith(":/existing/libs")
     assert recorded["active"] == "yes"
+    assert recorded["path"].split(os.pathsep)[0] == str(config.cuda_home / "bin")
     assert not (tmp_path / "SHOULD_NOT_EXIST").exists()
     assert not (root / "bin/start_native.sh").exists()
 
@@ -260,34 +261,14 @@ def test_cuda_headers_and_dangling_libraries_are_rejected(tmp_path):
         toolkit_paths(tmp_path)
 
 
-def test_cuda_package_repair_targets_only_missing_pinned_payloads(tmp_path):
-    from cuda_toolkit import missing_package_specs
-    metadata = tmp_path / 'conda-meta'
-    metadata.mkdir()
-    (tmp_path / 'present.h').write_text('present')
-    base = {'version': '12.5.82', 'build': '0',
-            'channel': 'https://conda.anaconda.org/nvidia/label/cuda-12.5.1/noarch'}
-    for name, files, channel in (
-        ('cuda-cudart-dev_linux-64', ['targets/x86_64-linux/include/cuda_runtime.h'], base['channel']),
-        ('cuda-present', ['present.h'], base['channel']),
-        ('cuda-toolkit', [], base['channel']),
-        ('unrelated', ['missing-file'], 'conda-forge'),
-    ):
-        (metadata / (name + '.json')).write_text(json.dumps({**base, 'name': name, 'files': files, 'channel': channel}))
-    assert missing_package_specs(tmp_path) == ['cuda-cudart-dev_linux-64=12.5.82=0']
-    assert not (tmp_path / 'targets').exists()
 
-
-def test_cuda_package_metadata_cannot_escape_its_prefix(tmp_path):
-    from cuda_toolkit import missing_package_specs
-    directory = tmp_path / 'conda-meta'
-    directory.mkdir()
-    (directory / 'invalid.json').write_text(json.dumps({
-        'name': 'cuda-invalid', 'version': '12.5.82', 'build': '0',
-        'channel': 'nvidia/label/cuda-12.5.1', 'files': ['../outside'],
-    }))
-    with pytest.raises(ValueError, match='Invalid installed package path'):
-        missing_package_specs(tmp_path)
+def test_removed_cuda_repair_command_cannot_mutate_prefix(tmp_path):
+    root = tmp_path / "must-stay-absent"
+    result = subprocess.run([sys.executable, PROJECT / "scripts/cuda_toolkit.py", "install", root],
+                            capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "invalid choice" in result.stderr
+    assert not root.exists()
 
 
 def test_native_build_pins_cmake_to_validated_cuda_paths(tmp_path, monkeypatch):
