@@ -44,7 +44,7 @@ def test_tts_device_rejects_invalid_values(device):
 
 
 def test_gpu_synthesis_does_not_reuse_cpu_cache():
-    cpu = SynthesisRequest('Hello')
+    cpu = SynthesisRequest('Hello', RunSettings(tts_device='cpu'))
     gpu = SynthesisRequest('Hello', RunSettings(tts_device='cuda:0'))
     assert cpu.settings.tts_device == 'cpu'
     assert cpu.cache_key() != gpu.cache_key()

@@ -89,7 +89,9 @@ class PreparationService:
                                   provenance=result["provenance"], trace_path=f"{directory}/telemetry.json",
                                   expected_question=payload["question"])
 
-    def upload(self, study_id: str, case_id: str, content: bytes):
+    def upload(self, study_id: str, case_id: str, content: bytes, origin: str = "uploaded"):
+        if origin not in {"uploaded", "recorded"}:
+            raise ValueError("Unknown audio origin")
         details = self.studies.get(study_id)
         self.studies.require_editable(details.study)
         if not content or len(content) > 50 * 1024 * 1024:
@@ -103,8 +105,10 @@ class PreparationService:
                 path = self.artifacts.resolve(f"{directory}/input.wav")
                 write_pcm(path, read_pcm(self.artifacts.resolve(original)))
         trace.write(self.artifacts.resolve(f"{directory}/telemetry.json"))
+        self.artifacts.write(f"{directory}/input.wav", path.read_bytes())
+        self.artifacts.write(f"{directory}/telemetry.json", (self.artifacts.root / directory / "telemetry.json").read_bytes())
         return self.studies.attach_audio(study_id, case_id, path=f"{directory}/input.wav",
-                                         checksum=self.artifacts.checksum(f"{directory}/input.wav"), origin="uploaded",
+                                         checksum=self.artifacts.checksum(f"{directory}/input.wav"), origin=origin,
                                          provenance={"original_sha256": key, "sample_rate": 16000}, trace_path=f"{directory}/telemetry.json")
 
     def transcribe(self, run_id: str):

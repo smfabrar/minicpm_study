@@ -10,8 +10,9 @@ router = APIRouter(prefix="/api", tags=["system"])
 
 
 @router.get("/health")
-def health():
-    return {"status": "ready", "version": "0.1.0"}
+def health(container: ServiceContainer):
+    return {"status": "ready", "version": "0.1.0", "storage":
+            "mongodb-atlas-gridfs" if hasattr(container.studies.database, "unit_of_work") else "local-sqlite"}
 
 
 @router.get("/runtime")

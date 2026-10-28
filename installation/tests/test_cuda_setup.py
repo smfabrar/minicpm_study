@@ -189,8 +189,8 @@ def test_settings_use_server_paths_and_one_gpu_device(tmp_path):
     assert settings["tts_device"] == "cuda:0"
     assert settings["reference_audio"] == "/srv/demo/assets/ref_audio/ref_en_dlc_1.wav"
     assert settings["tts_revision"] == "a" * 40
-    assert support.run_settings(models, Path("/srv/demo"), patch, 2)["granite_device"] == "cuda:1"
-    assert support.run_settings(models, Path("/srv/demo"), patch, 2)["tts_device"] == "cuda:1"
+    assert support.run_settings(models, Path("/srv/demo"), patch, 2)["granite_device"] == "cuda:0"
+    assert support.run_settings(models, Path("/srv/demo"), patch, 2)["tts_device"] == "cuda:0"
 
 
 def test_generated_native_and_study_scripts_have_valid_shell_and_frozen_settings(tmp_path):

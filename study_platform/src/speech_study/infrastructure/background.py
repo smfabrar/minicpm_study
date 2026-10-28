@@ -33,8 +33,8 @@ class Operation:
 
 
 class BackgroundQueue:
-    def __init__(self, root: Path):
-        self.store = ArtifactStore(root)
+    def __init__(self, root: Path, *, store=None):
+        self.store = store or ArtifactStore(root)
         self.queue = queue.Queue()
         self.handlers = {}
         self.stopped = threading.Event()
@@ -69,8 +69,12 @@ class BackgroundQueue:
             self.store.write_json(operation.id + ".json", asdict(operation))
 
     def _log(self, operation, message, details=None):
-        with self.lock, self.store.resolve(operation.id + ".log").open("a") as stream:
-            stream.write(json.dumps({"at": utc_now(), "message": message, "details": details}, ensure_ascii=False) + "\n")
+        with self.lock:
+            relative = operation.id + ".log"
+            path = self.store.resolve(relative)
+            previous = path.read_bytes() if path.is_file() else b""
+            line = json.dumps({"at": utc_now(), "message": message, "details": details}, ensure_ascii=False) + "\n"
+            self.store.write(relative, previous + line.encode())
 
     def report(self, message, *, details=None, **changes):
         operation = _current.get()

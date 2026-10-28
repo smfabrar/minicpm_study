@@ -5,6 +5,11 @@ from .repositories import CaseRepository, RunRepository, StudyRepository, ToolRe
 
 
 class UnitOfWork:
+    def __new__(cls, database):
+        if hasattr(database, "unit_of_work"):
+            return database.unit_of_work()
+        return super().__new__(cls)
+
     def __init__(self, database: Database):
         self.database = database
 

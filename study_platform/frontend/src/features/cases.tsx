@@ -1,3 +1,4 @@
+import { VoiceRecorder } from './voice-recorder';
 import { useState } from 'react';
 import { Plus, Pencil, Upload, Volume2, Play, Trash2 } from 'lucide-react';
 import type { Study, StudyCase } from '@/lib/types';
@@ -70,6 +71,7 @@ export function Cases({ study }: {
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t pt-4">
           {item.audio_path ? <><audio className="h-9 max-w-full" controls preload="none" src={artifactUrl(item.audio_path)} /><span className="text-xs text-muted-foreground">{item.audio_origin} · {item.audio_sha256?.slice(0, 10)}</span></> : <span className="text-sm text-muted-foreground">Audio not prepared</span>}
+          {!frozen && <VoiceRecorder endpoint={`${base}/cases/${item.id}/audio`} />}
           <div className="ml-auto flex gap-2">
             {!frozen && <><Button variant="outline" size="sm" disabled={action.isPending} onClick={() => action.mutate(() => api.request(`${base}/cases/${item.id}/prepare`, 'POST'))}><Volume2 className="size-4" /> TTS</Button><Button asChild variant="outline" size="sm">
               <label><Upload className="size-4" /> WAV<input className="sr-only" type="file" accept="audio/wav,.wav" onChange={event => {

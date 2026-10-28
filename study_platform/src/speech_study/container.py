@@ -55,9 +55,19 @@ class ApplicationServices:
     @classmethod
     def create(cls, root: Path):
         root.mkdir(parents=True, exist_ok=True)
-        database = Database(root / "studies.sqlite")
-        artifacts = ArtifactStore(root / "artifacts")
-        operations = BackgroundQueue(root / "operations")
+        uri = os.environ.get("SPEECH_MONGODB_URI", "")
+        if uri:
+            from .infrastructure.mongo import MongoDatabase
+            from .infrastructure.gridfs_store import GridFSArtifactStore
+            database = MongoDatabase(uri, os.environ.get("SPEECH_MONGODB_DATABASE", "minicpm_study"))
+            artifacts = GridFSArtifactStore(root / "artifacts", database.db)
+            operation_store = GridFSArtifactStore(root / "operations", database.db, "operations")
+            operation_store.resolve(".")  # Recover operation history on a fresh machine.
+        else:
+            database = Database(root / "studies.sqlite")
+            artifacts = ArtifactStore(root / "artifacts")
+            operation_store = ArtifactStore(root / "operations")
+        operations = BackgroundQueue(root / "operations", store=operation_store)
         connection = ConnectionSettings(root / "connection.json")
         studies = StudyService(database, artifacts, operations)
         runs = RunService(database, artifacts, operations, connection.get)

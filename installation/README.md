@@ -321,3 +321,66 @@ Start the local study backend with `SPEECH_RUNTIME_URL=http://127.0.0.1:8766` an
 the same `SPEECH_RUNTIME_TOKEN` as the remote pipeline, if configured. The remote
 pipeline still owns all model execution. This is separate from forwarding the
 server-hosted website on port 8765.
+
+### Durable study data with MongoDB Atlas
+
+Set up an Atlas database user with read/write access to one database and allow
+this server's outgoing IP in Atlas Network Access. Copy the Atlas connection
+string into `/workspace/minicpm-study-install/runtime/study.env` on each machine:
+
+```bash
+SPEECH_MONGODB_URI='mongodb+srv://USER:PASSWORD@CLUSTER/?retryWrites=true&w=majority'
+SPEECH_MONGODB_DATABASE='minicpm_study'
+```
+
+Use the same database on replacement machines. Keep `study.env` private (`chmod
+600`) and outside Git. The generated study launcher loads it automatically.
+Run `bash installation/update.sh --jobs 2` to install the driver and regenerate
+the launcher, then `bash installation/restart.sh .../runtime study` if needed.
+Replace `.../runtime` with `/workspace/minicpm-study-install/runtime`.
+
+Atlas collections store studies, cases, tools, frozen requests, run results and
+reviews. GridFS buckets `artifacts` and `operations` store prepared/recorded audio,
+output WAVs, traces, logs and operation history. Local storage becomes a cache;
+files are downloaded on demand on a fresh machine. Model weights and the native
+reference WAV remain runtime installation assets, not study data. The default
+reference WAV is preselected in new studies and can be changed in Settings.
+New device defaults use CUDA 0. Saved studies retain their configured settings.
+
+Only one study platform should use a database at a time. A replacement platform
+marks unfinished operations interrupted; jobs on a destroyed runtime cannot
+resume, but already collected evidence remains available. Data still being
+produced on the old runtime must be collected before destroying it.
+
+If `SPEECH_MONGODB_URI` is absent, local SQLite mode remains available. If Atlas
+is configured but unreachable, startup fails instead of silently saving locally.
+GridFS writes happen when the platform collects artifacts, outside inference.
+
+**Migrate the current machine before destroying it:** stop the study service,
+load your private environment file, then use the study virtual environment:
+
+```bash
+cd /workspace/minicpm-study-install/minicpm_study
+run=/workspace/minicpm-study-install/runtime
+bash installation/stop.sh "$run" study
+set -a
+source "$run/study.env"
+set +a
+"$run/study-venv/bin/python" installation/migrate_to_atlas.py --data "$run/data/platform"
+bash installation/start.sh "$run" study
+```
+
+The migration copies existing SQLite records and artifact/operation files; it
+keeps the source intact and refuses to overwrite differing destination records.
+It can be rerun after an interrupted copy. Before deleting the old instance,
+start the platform with an empty `--data` directory against the same Atlas
+database, check old studies and reviews, play an input/output WAV, and export a
+study ZIP. This verifies recovery independently of the old disk.
+
+Use **Record voice** beside a question, allow microphone access, stop and preview,
+then choose **Use recording**. WAV upload and TTS remain available. Recording
+works on HTTPS or localhost (including an SSH tunnel); recordings are normalized
+to the same 16 kHz input format and reused across B0/B1/B2. Recordings of other
+speakers use the same process; source/speaker details can be recorded in case notes.
+
+GridFS uses MongoDB’s [official large-file storage API](https://www.mongodb.com/docs/languages/python/pymongo-driver/current/crud/gridfs/).

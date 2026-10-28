@@ -23,7 +23,7 @@ class RunSettings:
     system_prompt: str = "You are a helpful voice assistant. Use current external information when available. Answer concisely."
     granite_model: str = "ibm-granite/granite-4.0-350m"
     granite_revision: str = "main"
-    granite_device: str = "cuda:1"
+    granite_device: str = "cuda:0"
     caller_backend: str = "granite"
     caller_model: str = ""
     caller_revision: str = ""
@@ -31,18 +31,18 @@ class RunSettings:
     caller_quantization: str = "none"
     whisper_model: str = "tiny"
     whisper_device: str = "cuda"
-    whisper_device_index: int = 1
+    whisper_device_index: int = 0
     whisper_compute_type: str = "float16"
     native_url: str = "ws://127.0.0.1:8000/v1/realtime?mode=audio"
     native_revision: str = "873056743b74e1a4ce5dcf7290e2298428e214db"
     gateway_revision: str = "47709a9210dfd71afa76c058e017fc8c4db5c8d2"
     patch_sha256: str = ""
-    reference_audio: str = ""
+    reference_audio: str = "/workspace/minicpm-study-install/runtime/sources/MiniCPM-o-Demo/assets/ref_audio/ref_en_dlc_1.wav"
     memory_interval_ms: int = 20
     voice: str = "af_heart"
     tts_speed: float = 1.0
     tts_revision: str = "main"
-    tts_device: str = "cpu"
+    tts_device: str = "cuda:0"
 
     def __post_init__(self):
         for name, lower, upper in (("repetitions", 1, 20), ("oracle_delay_ms", 0, 60000),

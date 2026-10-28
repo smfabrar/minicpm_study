@@ -26,3 +26,5 @@ logs/
 *.safetensors
 *.pt
 *.pth
+
+study.env

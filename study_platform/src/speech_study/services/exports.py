@@ -43,6 +43,7 @@ class ExportService:
                 write(name, json.dumps(value, indent=2, ensure_ascii=False))
 
             def collect(directory):
+                directory = self.artifacts.resolve(directory.relative_to(self.artifacts.root).as_posix())
                 if not directory.is_dir():
                     return
                 for path in sorted(directory.rglob("*")):

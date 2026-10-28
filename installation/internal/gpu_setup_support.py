@@ -146,7 +146,7 @@ def download_models(root: Path) -> dict:
 def run_settings(models: dict, demo: Path, patch: Path, device_count: int) -> dict:
     from speech_contracts import RunSettings
 
-    sidecar_device = 1 if device_count > 1 else 0
+    sidecar_device = 0
     return asdict(RunSettings(
         granite_device=f"cuda:{sidecar_device}", whisper_device_index=sidecar_device,
         whisper_model=models["whisper"]["path"], granite_model=models["granite"]["path"],

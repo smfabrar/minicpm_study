@@ -177,3 +177,26 @@ Review corrections: preserve acknowledgement/text evidence when clip assembly fa
 measure the observation endpoint at transport closure, including interrupted runs;
 preserve whitespace deltas in reported text. Regression checks cover missing clips,
 matching acknowledgements, bounded observation intervals and literal text.
+
+## Voice recording and durable Atlas storage (2026-10-28)
+
+- Browser microphone capture with AudioWorklet, PCM16 WAV encoding, preview,
+  discard and upload to the existing case audio boundary. Origin is recorded.
+- Default reference voice is the installed English WAV, editable per study.
+  New model devices use CUDA 0; saved requests keep their historical configuration.
+- Atlas repository adapter and transactional unit of work preserve service rules.
+  GridFS stores artifacts and operation history with a disposable local cache.
+  Cloud collection stays outside benchmark timing. URI configuration never falls
+  back silently if Atlas fails. Local SQLite remains usable without a URI.
+- A source-preserving migration and recovery instructions live in installation/.
+  Single active platform per Atlas database. In-flight runtime work is local until
+  collected; persistent model loading remains deferred.
+
+Atlas adapter review: serialize service transactions to preserve edit/freeze
+semantics in the supported single active platform; serialize GridFS reads/writes
+while publishing and retiring file versions; cancel recorder starts by attempt ID.
+Validated cache-loss restoration, file replacement, metadata roundtrip/lock release,
+recorded WAV normalization and frozen-study rejection using CPU fixtures. Real
+Atlas recovery, browser microphone capture and frontend production build still
+require server/browser verification; MongoDB driver installation was unavailable
+in the local environment.

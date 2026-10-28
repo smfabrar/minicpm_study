@@ -9,7 +9,7 @@ export function callerSettings(settings: Settings) {
     model: String(settings.caller_model || (backend === 'granite'
       ? settings.granite_model || 'ibm-granite/granite-4.0-350m' : 'Qwen/Qwen3-1.7B')),
     revision: String(settings.caller_revision || (backend === 'granite' ? settings.granite_revision || 'main' : 'main')),
-    device: String(settings.caller_device || settings.granite_device || 'cuda:1'),
+    device: String(settings.caller_device || settings.granite_device || 'cuda:0'),
     quantization: String(settings.caller_quantization || 'none'),
   };
 }

@@ -65,10 +65,10 @@ def prepare(study_id: str, case_id: str, container: ServiceContainer):
 
 
 @router.post("/{study_id}/cases/{case_id}/audio")
-async def upload(study_id: str, case_id: str, container: ServiceContainer, audio: UploadFile = File()):
+async def upload(study_id: str, case_id: str, container: ServiceContainer, audio: UploadFile = File(), origin: str = "uploaded"):
     import asyncio
     content = await audio.read(50 * 1024 * 1024 + 1)
-    return await asyncio.to_thread(container.preparation.upload, study_id, case_id, content)
+    return await asyncio.to_thread(container.preparation.upload, study_id, case_id, content, origin)
 
 
 @router.post("/{study_id}/tools", status_code=201)
