@@ -2,7 +2,7 @@
 
 An independently installable audio-in/audio-out inference package. It has no dependency on the study backend, SQLite, the frontend or study services. Use it through the `speech-runtime` HTTP service, `speech-infer` CLI, or `InferencePipeline` Python class.
 
-The study application submits audio and configuration once. This package owns replay, Whisper, Granite, tool validation/execution, context injection, native acknowledgements, output audio and telemetry. Kokoro synthesis and output transcription are separate jobs outside inference timing.
+The study application submits audio and configuration once. This package owns replay, Whisper, the selected caller, tool validation/execution, context injection, native acknowledgements, output audio and telemetry. Kokoro synthesis and output transcription are separate jobs outside inference timing.
 
 A reference-audio error refers to the configuration saved in that run. The worker reports whether `reference_audio` is empty or its file is missing, including the checked path and runtime hostname for missing files. Inspect the failed run's **Request & provenance** settings; changing the study's settings affects newly created runs. The WAV must be accessible to the pipeline worker's host.
 
@@ -90,11 +90,14 @@ Start with [pipeline/runner.py](src/tool_pipeline/pipeline/runner.py). There is 
 src/tool_pipeline/
   pipeline/
     runner.py        initialize → replay → resolve context → finish → save
-    context.py       B1: Whisper + Granite + tool; B2: delayed oracle fact
+    context.py       B1: Whisper + caller + tool; B2: delayed oracle fact
     playback.py      paced audio replay and bounded silence/injection
     results.py       RunState dataclass and result/trace file output
   models/
-    granite.py       tool selection and argument generation
+    caller.py        shared local loading, generation, parsing and CUDA telemetry
+    granite.py       Granite native template adapter
+    qwen.py          Qwen3 adapter with thinking disabled
+    factory.py       construct the caller selected by run settings
     whisper.py       audio transcription
     minicpm.py       native session, speech reception and injection ACKs
     preparation.py   Kokoro input synthesis and output transcription jobs
@@ -121,7 +124,7 @@ flowchart LR
     B --> C[Replay input audio]
     C --> D{Condition}
     D -->|B0| G[Finish receiving speech]
-    D -->|B1| E[Whisper → Granite → execute tool]
+    D -->|B1| E[Whisper → caller → execute tool]
     D -->|B2| F[Wait for oracle fact]
     E --> H[Deliver available context at an audio boundary]
     F --> H
@@ -129,9 +132,60 @@ flowchart LR
     G --> I[Save audio, result and telemetry]
 ```
 
-B1 gives Granite the committed transcript and every attached function schema in one native generation. There is no A–E letter classifier or separate argument-generation pass. A valid native call is parsed, validated, normalized and executed. Plain assistant text, including clarification questions, becomes a `respond` action and is submitted to MiniCPM as response guidance. Invalid calls and failed tools retain their diagnostic error and submit a concise retry response instead of silently dropping the request. Tool facts and response guidance have distinct context payloads; guidance does not populate `tool_result`. Both count toward context submission/evaluation acknowledgements.
+B1 gives the selected caller the committed transcript and every attached function schema in one native generation. There is no A–E letter classifier or separate argument-generation pass. A valid native call is parsed, validated, normalized and executed. Plain assistant text, including clarification questions, becomes a `respond` action and is submitted to MiniCPM as response guidance. Invalid calls and failed tools retain their diagnostic error and submit a concise retry response instead of silently dropping the request. Tool facts and response guidance have distinct context payloads; guidance does not populate `tool_result`. Both count toward context submission/evaluation acknowledgements.
 
-B2 sends no context when its oracle is absent. MiniCPM output is received concurrently throughout replay and context resolution. `RunState` holds the transcript, action, tool result and timestamps collected during one run. The result retains the native caller's raw output, and provenance identifies `granite_calling_mode: "native"`. Prompt-format spans retain the rendered Granite prompt, its hash and the supplied tool names so model behavior can be reproduced. The default model remains Granite 4.0 350M, whose JSON-in-`<tool_call>` format the parser supports; newer models with different output formats require their own integration.
+B2 sends no context when its oracle is absent. MiniCPM output is received concurrently throughout replay and context resolution. `RunState` holds the transcript, action, tool result and timestamps collected during one run. The result retains the caller's raw output. Generic provenance records `caller_backend`, `caller_model`, `caller_resolved_revision`, `caller_calling_mode` and `caller_enable_thinking`. Legacy Granite provenance remains populated only for Granite runs. Prompt-format spans retain the rendered prompt, its hash, supplied tool names and Qwen's `enable_thinking: false`. Trace substeps use `granite.*` or `qwen3.*`, including cold initialization and generation timing.
+
+## Select a tool caller
+
+In a draft study, open **Settings → Tool-calling model (B1)** and select Granite
+or **Qwen3-1.7B · thinking disabled**. Confirm the caller device (use `cuda:0` on
+one GPU), then save configuration. Frozen studies must be cloned first. Existing
+prepared case audio can be reused; caller selection does not change synthesis.
+
+Equivalent request settings:
+
+```json
+{
+  "caller_backend": "qwen3",
+  "caller_model": "Qwen/Qwen3-1.7B",
+  "caller_revision": "main",
+  "caller_device": "cuda:0"
+}
+```
+
+Qwen uses the model's chat template with **`enable_thinking=False`** on every
+request; this is not an optional study toggle. It generates at most one call
+using the same OpenAI function schemas and JSON-in-`<tool_call>` format. Qwen
+end tokens and an empty thinking prefix are removed before parsing. Nonempty
+reasoning, unknown tools, malformed calls and multiple calls are rejected.
+
+The runtime downloads Qwen weights at first use with the existing Transformers
+model extras. The default snapshot contains roughly 4 GB of weights; ensure
+additional disk and GPU memory are available alongside MiniCPM. No new model
+server or Qwen-Agent dependency is required. A local snapshot directory may be
+used as `caller_model`; remote snapshots record the resolved commit. Pin
+`caller_revision` to that commit before a repeat experiment.
+
+To download before running a timed job, execute on the GPU server:
+
+```bash
+run=/workspace/minicpm-study-install/runtime
+HF_HOME="$run/models/cache" "$run/venv/bin/python" - <<'PY'
+from huggingface_hub import snapshot_download
+print(snapshot_download("Qwen/Qwen3-1.7B", allow_patterns=["*.json", "*.jinja", "*.txt", "*.safetensors"]))
+PY
+```
+
+This avoids including the first network download inside a run's timeout. The
+runtime still records model loading separately from inference for each run.
+
+Granite remains the default. Empty generic caller fields resolve from existing
+`granite_model`, `granite_revision` and `granite_device` for old studies. For Qwen,
+the model/revision default to `Qwen/Qwen3-1.7B`/`main`, and an empty caller device
+inherits the old device. Explicit `caller_*` values take precedence. Switching
+the selector restores the chosen backend's default model/revision and keeps the
+device; edit custom paths or revisions afterward.
 
 Response guidance uses the existing native context extension. A successful ACK confirms delivery, not that MiniCPM spoke the requested text or waited for it before answering. Those behaviors still need GPU/audio validation.
 
@@ -139,20 +193,20 @@ For the shortest reading path: `pipeline/runner.py` → `pipeline/context.py` �
 
 The [update procedure](../installation/README.md#update-an-existing-installation) refreshes editable packages and console entry points. `from tool_pipeline.pipeline import InferencePipeline`, `speech-infer`, `speech-runtime` and the HTTP endpoints keep the same public usage.
 
-Only `speech_contracts` is shared with the study application. `duplex_tools` is the reference dependency for Granite parsing and deterministic fixture implementations. Model packages are imported lazily by workers.
+Only `speech_contracts` is shared with the study application. `duplex_tools` is the reference dependency for the shared JSON tool-call parser and deterministic fixture implementations. Model packages are imported lazily by workers.
 
 ## Timing and verification
 
 Full-recording ASR is committed after non-live input replay ends. Paced replay is the default. Final silence is unit-bounded and resets after injection; unpaced timings must be analyzed separately. Initialization, inference and output ASR use distinct traces.
 
-The pipeline records monotonic nanoseconds, nested step/substep spans, actual events, exact injected payloads and acknowledgements, process RSS/NVML samples, supported Granite CUDA timing, and provenance. Native process memory and internal encoding/prefill/decode/vocoding remain explicitly unavailable without native instrumentation. Sampled memory is not an exact transient peak. An ACK does not prove a correct audible answer.
+The pipeline records monotonic nanoseconds, nested step/substep spans, actual events, exact injected payloads and acknowledgements, process RSS/NVML samples, supported caller CUDA timing, and provenance. Native process memory and internal encoding/prefill/decode/vocoding remain explicitly unavailable without native instrumentation. Sampled memory is not an exact transient peak. An ACK does not prove a correct audible answer.
 
 ```bash
 python -m pytest tests -q
 python -m compileall -q src ../installation/internal
 ```
 
-CPU protocol and timing checks pass. The real TCP fixture is skipped only when the sandbox blocks listening sockets. Actual MiniCPM/Granite/Whisper/Kokoro execution and GPU timing require remote validation; no synthetic test fixture is presented as a study result.
+CPU protocol and timing checks pass. The real TCP fixture is skipped only when the sandbox blocks listening sockets. Actual MiniCPM/caller/Whisper/Kokoro execution and GPU timing require remote validation; no synthetic test fixture is presented as a study result.
 
 ## Authored Python tools
 

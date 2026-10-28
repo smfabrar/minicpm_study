@@ -49,7 +49,7 @@ export function StudyPage() {
         {study.status === 'draft' ? <Button disabled={action.isPending || !study.cases.length} onClick={() => action.mutate(() => api.request(`/studies/${id}/freeze`, 'POST'))}><Lock className="size-4" /> Freeze study</Button> : <Button disabled={action.isPending} onClick={() => action.mutate(() => api.request(`/studies/${id}/matrix`, 'POST'))}><Play className="size-4" /> Run full matrix</Button>}
       </div>
     </div>
-    <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">B0 · Native speech <span className="mx-4">/</span> B1 · Whisper → Granite → tools → native injection <span className="mx-4">/</span> B2 · Oracle → native injection</div>
+    <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">B0 · Native speech <span className="mx-4">/</span> B1 · Whisper → caller → tools → native injection <span className="mx-4">/</span> B2 · Oracle → native injection</div>
     <Dialog open={deleting} onOpenChange={setDeleting}><DialogContent><DialogHeader><DialogTitle>Move {study.name} to Trash?</DialogTitle><DialogDescription>Recordings, metadata and run history will be retained. Restore the study from the dashboard. Finish this study's queued work first.</DialogDescription></DialogHeader><div className="flex gap-2"><Button variant="outline" onClick={() => setDeleting(false)}>Cancel</Button><Button variant="destructive" disabled={action.isPending} onClick={() => action.mutate(async () => { await api.request(`/studies/${id}`, 'DELETE'); navigate('/'); })}>Move to Trash</Button></div></DialogContent></Dialog>
     <Tabs defaultValue="cases">
       <TabsList className="mb-5">

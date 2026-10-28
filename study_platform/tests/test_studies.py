@@ -84,6 +84,28 @@ class StudyIntegrationTests(unittest.TestCase):
         self.assertEqual(self.client.put(self.base + '/cases/' + item['id'], json={'question': 'Changed'}).status_code, 409)
         self.assertEqual(self.client.put(self.base, json={'name': 'Changed'}).status_code, 409)
 
+    def test_qwen_settings_survive_restart_clone_and_frozen_run_request(self):
+        settings = {
+            'caller_backend': 'qwen3', 'caller_model': 'Qwen/Qwen3-1.7B',
+            'caller_revision': 'qwen-sha', 'caller_device': 'cuda:0',
+        }
+        response = self.client.put(self.base, json={'settings': settings})
+        self.assertEqual(response.status_code, 200, response.text)
+        restarted = TestClient(create_app(Path(self.directory.name)))
+        saved = restarted.get(self.base).json()['settings']
+        for key, value in settings.items():
+            self.assertEqual(saved[key], value)
+        item = self.prepared_case()
+        self.assertEqual(self.client.post(self.base + '/freeze').status_code, 200)
+        run = self.start(item, ['B1'])[0]
+        for key, value in settings.items():
+            self.assertEqual(run['request']['settings'][key], value)
+        self.assertEqual(self.client.put(self.base, json={'settings': {'caller_backend': 'granite'}}).status_code, 409)
+        clone = self.client.post(self.base + '/clone').json()
+        self.assertEqual(clone['settings']['caller_backend'], 'qwen3')
+        self.assertEqual(clone['settings']['caller_revision'], 'qwen-sha')
+        self.assertEqual(self.client.put('/api/studies/' + clone['id'], json={'settings': {'caller_backend': 'unsupported'}}).status_code, 400)
+
     def test_conditions_reuse_identical_audio_and_do_not_leak_answers(self):
         item = self.prepared_case()
         runs = self.start(item, ['B0', 'B1', 'B2'])

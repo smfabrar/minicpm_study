@@ -1,12 +1,13 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import type { Study } from '@/lib/types';
-import { parseStudySettings, verifySavedSettings } from '@/lib/settings';
+import { callerSettings, parseStudySettings, selectCaller, verifySavedSettings, type CallerBackend } from '@/lib/settings';
 import { useAction } from '@/hooks/use-data';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FieldGroup } from '@/components/ui/field';
 import { ErrorNotice, FormField } from '@/components/shared';
 
@@ -24,6 +25,7 @@ export function StudySettings({ study }: { study: Study }) {
       return null;
     }
   }, [settings]);
+  const caller = callerSettings(parsedSettings ?? {});
 
   function markEdited() {
     setSaved(false);
@@ -77,6 +79,30 @@ export function StudySettings({ study }: { study: Study }) {
                 if (parsedSettings) changeSettings(JSON.stringify({ ...parsedSettings, reference_audio: event.target.value }, null, 2));
               }} />
           </FormField>
+          <FormField label="Tool-calling model (B1)">
+            <Select disabled={disabled || !parsedSettings} value={caller.backend}
+              onValueChange={value => {
+                if (parsedSettings) changeSettings(JSON.stringify(selectCaller(parsedSettings, value as CallerBackend), null, 2));
+              }}>
+              <SelectTrigger aria-label="Tool-calling model (B1)"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="granite">Granite</SelectItem>
+                <SelectItem value="qwen3">Qwen3-1.7B · thinking disabled</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormField>
+          <div className="grid gap-4 md:grid-cols-3">
+            {(['model', 'revision', 'device'] as const).map(field => <FormField key={field}
+              label={`Caller ${field}`}>
+              <Input className="font-mono" disabled={disabled || !parsedSettings} value={caller[field]}
+                onChange={event => {
+                  if (parsedSettings) changeSettings(JSON.stringify({ ...parsedSettings, [`caller_${field}`]: event.target.value }, null, 2));
+                }} />
+            </FormField>)}
+          </div>
+          {caller.backend === 'qwen3' && <p className="text-sm text-muted-foreground">
+            Qwen uses its native tool template with thinking disabled. Its weights download on the pipeline server at first use; allow time and disk space for the download.
+          </p>}
           <div className="flex flex-wrap items-center gap-3">
             {study.status === 'draft' && <Button type="submit" disabled={action.isPending}>
               {action.isPending ? 'Saving…' : 'Save configuration'}

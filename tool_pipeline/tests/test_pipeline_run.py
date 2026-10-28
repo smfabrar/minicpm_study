@@ -3,6 +3,7 @@
 import asyncio
 import json
 import time
+from dataclasses import replace
 
 import pytest
 
@@ -178,6 +179,36 @@ def test_invalid_native_call_delivers_failure_guidance_and_preserves_error(tmp_p
     assert result["context_submitted"] == 1
     assert contexts[0]["response_text"]
     assert "<tool_call>" not in contexts[0]["response_text"]
+
+
+def test_qwen_pipeline_retains_generic_provenance_and_native_ack(tmp_path):
+    from tool_pipeline.models.qwen import QwenCaller
+
+    def qwen_fixture(settings, registry, trace):
+        caller = QwenCaller.__new__(QwenCaller)
+        caller.registry = registry
+        caller.trace = trace
+        caller.model_revision = 'qwen-fixture-sha'
+        caller.gpu_pairs = []
+        caller.generate = lambda messages, schemas: (
+            '<tool_call>{"name":"room_lookup","arguments":{"name":"robotics seminar"}}</tool_call><|im_end|>'
+        )
+        return caller
+
+    pipeline = make_pipeline(tmp_path, caller=qwen_fixture)
+    pipeline.request = replace(pipeline.request, settings=replace(
+        pipeline.request.settings, caller_backend='qwen3', caller_device='cuda:0'
+    ))
+    result = asyncio.run(pipeline.run())
+    assert result['status'] == 'complete'
+    assert result['tool_result']['facts'] == 'Room B742'
+    assert result['context_submitted'] == result['context_evaluated'] == 1
+    provenance = result['provenance']
+    assert provenance['caller_backend'] == 'qwen3'
+    assert provenance['caller_model'] == 'Qwen/Qwen3-1.7B'
+    assert provenance['caller_resolved_revision'] == 'qwen-fixture-sha'
+    assert provenance['caller_enable_thinking'] is False
+    assert provenance['granite_resolved_revision'] is None
 
 
 def test_missing_ack_marks_run_failed_and_retains_audio(tmp_path):

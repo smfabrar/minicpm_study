@@ -1,6 +1,6 @@
 # Designing and executing tools
 
-The tool designer saves a function name, a description shown to Granite, an argument schema, and your Python source. You write the implementation. No datetime or file-search function is built into the Python executor.
+The tool designer saves a function name, a description shown to the selected caller, an argument schema, and your Python source. You write the implementation. No datetime or file-search function is built into the Python executor.
 
 Choose **Tool library → New tool**, fill in the name and description, edit the JSON parameter schema and write `execute(arguments)`. Save the definition, then open a draft study's **Tools → Add from library**. You can also create a tool directly inside a study. Attaching a library tool makes a copy; changing or removing the library entry leaves existing copies and run snapshots intact.
 
@@ -9,20 +9,19 @@ Choose **Tool library → New tool**, fill in the name and description, edit the
 ```mermaid
 flowchart LR
     Audio[Recorded question] --> Whisper[Whisper transcript]
-    Whisper --> Route[Granite selects function]
-    Route --> Arguments[Granite generates JSON arguments]
-    Arguments --> Validate[Validate schema and grounding]
+    Whisper --> Route[Caller selects function and generates arguments]
+    Route --> Validate[Validate schema and grounding]
     Validate --> Execute[Execute saved Python function]
     Execute --> Facts[Return facts and sources]
     Facts --> MiniCPM[Inject facts into MiniCPM]
     MiniCPM --> Output[Receive generated speech]
 ```
 
-Granite does not write or run Python. First it scores routing choices: A means no tool, B means clarification needed, and C onward map to attached functions. Routing now records the label-to-function mapping, descriptions, required arguments and scores. These scores are model likelihoods, not calibrated confidence probabilities. After selecting a function, Granite generates its native `<tool_call>` response containing a name and arguments. The runtime checks that the selected function is attached to the study and validates those arguments before executing the saved code.
+The selected caller (Granite or Qwen3 with thinking disabled) receives the committed transcript and all attached function schemas in one generation. It returns one native `<tool_call>` containing a name and arguments, or a plain response/clarification. It does not write or run Python. The runtime checks that the function is attached to the study and validates its arguments before executing the saved code. Raw output and prompt metadata are retained; there is no separate letter classifier or argument-generation pass.
 
 A tool with no required arguments can be called with `{}`. Optional arguments are omitted when the user did not supply them; your Python code handles its own defaults. When argument grounding is enabled, string values must appear in the committed transcript. Turn it off for functions that accept normalized identifiers or other values that do not literally match speech. The calculator retains its spoken-arithmetic normalization.
 
-The router supports at most 20 attached tools. B0 does not execute tools; B2 injects the case's saved oracle fact through the same native adapter. A no-call, clarification, invalid call or failed tool continues without tool context. A native evaluation acknowledgement confirms that context was evaluated; listening to the recording determines spoken correctness.
+The router supports at most 20 attached tools. B0 does not execute tools; B2 injects the case's saved oracle fact through the same native adapter. Plain responses and clarification questions are delivered as response guidance. Invalid calls and failed tools retain the diagnostic error and deliver retry guidance; they do not populate tool facts. A native evaluation acknowledgement confirms that context was evaluated; listening to the recording determines spoken correctness.
 
 ## Python contract
 

@@ -56,3 +56,30 @@ def test_contract_distribution_has_no_runtime_dependencies():
     project = tomllib.loads((root / 'pyproject.toml').read_text())['project']
     assert project['dependencies'] == []
     assert 'scripts' not in project
+
+
+def test_legacy_study_resolves_original_granite_configuration():
+    settings = RunSettings.from_dict({'granite_model': '/models/granite', 'granite_revision': 'saved-sha', 'granite_device': 'cuda:0'})
+    assert settings.caller.backend == 'granite'
+    assert settings.caller.model == '/models/granite'
+    assert settings.caller.revision == 'saved-sha'
+    assert settings.caller.device == 'cuda:0'
+
+
+def test_qwen_selection_roundtrips_without_reusing_granite_snapshot():
+    settings = RunSettings(caller_backend='qwen3', granite_model='/models/granite', granite_revision='granite-sha', granite_device='cuda:0')
+    request = RunRequest('B1', '/input.wav', settings=settings)
+    restored = RunRequest.from_dict(request.to_payload()).settings
+    assert restored.caller.model == 'Qwen/Qwen3-1.7B'
+    assert restored.caller.revision == 'main'
+    assert restored.caller.device == 'cuda:0'
+    explicit = RunSettings(caller_backend='qwen3', caller_model='/models/qwen', caller_revision='qwen-sha', caller_device='cpu')
+    assert explicit.caller.model == '/models/qwen'
+    assert explicit.caller.revision == 'qwen-sha'
+    assert explicit.caller.device == 'cpu'
+
+
+@pytest.mark.parametrize('changes', [{'caller_backend': 'unknown'}, {'caller_device': 'cuda:-1'}, {'caller_model': '  '}, {'caller_revision': '  '}])
+def test_invalid_caller_configuration_fails_before_inference(changes):
+    with pytest.raises(ValueError, match='Caller'):
+        RunSettings(**changes)

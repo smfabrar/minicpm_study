@@ -2,7 +2,7 @@
 
 A FastAPI study application with a React/TypeScript shadcn interface. Model execution lives in the separately installable sibling [tool_pipeline](../tool_pipeline/README.md) project. This backend communicates with it through HTTP and does not import it. SQLite stores studies, cases, tools, immutable run requests, and listening reviews. WAV files and traces live in an artifact directory.
 
-B0 runs native MiniCPM-o 4.5 without tools. B1 duplicates the audio to Whisper Tiny, routes the transcript through Granite 4.0 350M, validates and executes a declared tool, then injects its result into the native session. B2 injects the saved oracle fact through the same adapter. Native MiniCPM produces the actual speech in all three conditions.
+B0 runs native MiniCPM-o 4.5 without tools. B1 duplicates the audio to Whisper Tiny, routes the transcript through the selected caller (Granite 4.0 350M or Qwen3-1.7B with thinking disabled), validates and executes a declared tool, then injects its result into the native session. B2 injects the saved oracle fact through the same adapter. Native MiniCPM produces the actual speech in all three conditions.
 
 Live evaluation is deferred. The non-live protocol commits the full recording to the sidecar **after audio replay finishes**. It therefore does not measure incremental Whisper streaming or early tool selection. Paced replay is the default. Final silence is bounded by audio units, including a full post-injection drain budget. Unpaced runs are explicitly configured and should be analyzed separately.
 
@@ -30,7 +30,7 @@ The frontend includes editable shadcn component source under `frontend/src/compo
 ## Independent GPU pipeline
 
 Follow the [setup guide](../installation/README.md) to install and start both applications
-on the GPU server. The pipeline owns Whisper, Granite, tool execution, native
+on the GPU server. The pipeline owns Whisper, the caller, tool execution, native
 MiniCPM injection, Kokoro and output transcription. The generated
 `run-settings.json` supplies server paths and GPU placement for study settings.
 
@@ -47,7 +47,7 @@ Both projects depend on the small [speech_contracts](../speech_contracts/README.
 
 1. Create a study. Configure native endpoint, remote reference WAV, device placement, time limits, and model revisions. Prefer immutable model revision hashes for collection.
 2. Add development and evaluation cases, or load the 48-case proposal template. The template contains text prompts; it is **not** the proposal's collected human recording dataset.
-3. Edit tool function names, descriptions, required string parameter, lookup fixtures, aliases, delays, and failure behavior. The displayed schema matches the Granite function schema.
+3. Edit tool function names, descriptions, required string parameter, lookup fixtures, aliases, delays, and failure behavior. The displayed schema matches the OpenAI function schema used by both callers.
 4. Prepare missing inputs using Kokoro, or upload PCM WAV recordings (up to 50 MiB and five minutes). Synthesis jobs appear under Operations. Inputs retain their origin, provenance, and checksum. Changing question text clears the prepared input.
 5. Try individual conditions during development. Freeze when all evaluation inputs and B2 oracle facts are ready. Freezing preserves the case/tool/settings snapshot; subsequent edits require cloning.
 6. Run the full randomized B0/B1/B2 matrix. The 48-case template produces 144 attempts per repetition. Work is serialized to avoid sidecar GPU contention. A disconnected platform preserves the remote job ID; resume collection without creating a new inference attempt.
@@ -82,7 +82,7 @@ Repositories only persist entities. Services own business operations. Routers va
 
 ## Measurement limits and validation
 
-Timers preserve monotonic integer nanoseconds and clock identity; the UI renders milliseconds. CUDA events measure supported Granite operations, with final synchronization. Process RSS/NVML are sampled observations, not guaranteed transient peaks. Native MiniCPM is a different process: its memory and internal encoding/prefill/decode/vocoding timings are explicitly unavailable without native instrumentation. Output text and context acknowledgement do not establish spoken correctness.
+Timers preserve monotonic integer nanoseconds and clock identity; the UI renders milliseconds. CUDA events measure supported caller operations, with final synchronization. Process RSS/NVML are sampled observations, not guaranteed transient peaks. Native MiniCPM is a different process: its memory and internal encoding/prefill/decode/vocoding timings are explicitly unavailable without native instrumentation. Output text and context acknowledgement do not establish spoken correctness.
 
 ```bash
 python -m pip install -e '.[dev]'
@@ -97,7 +97,7 @@ Local evidence: study API/persistence and package-isolation checks pass. The ind
 
 ## Tool designer, operations, exports and Trash
 
-See [the tool designer guide](../docs/TOOL_DESIGNER.md) for the Python function contract and the full Granite calling flow. The global tool library stores user-authored definitions; attaching a tool copies it into a draft study. The existing record-based fixtures remain available. The Python executor contains no built-in datetime or file-search function.
+See [the tool designer guide](../docs/TOOL_DESIGNER.md) for the Python function contract and the full tool-calling flow. The global tool library stores user-authored definitions; attaching a tool copies it into a draft study. The existing record-based fixtures remain available. The Python executor contains no built-in datetime or file-search function.
 
 Operations has a full queue view and a detail page with requests, remote jobs, progress and captured logs. Export ZIP at the top of a study includes metadata, recorded files, historical inputs, source and execution evidence with a checksum inventory. Delete study moves it to recoverable Trash; active work blocks deletion.
 

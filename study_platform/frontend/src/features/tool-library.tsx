@@ -21,7 +21,7 @@ export function ToolLibraryPage() {
         <Button onClick={() => setEditing({ definition: blankTool })}>New tool</Button>
       </div>
     </div>
-    <p className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">Whisper transcribes the input. Granite selects an attached function and generates JSON arguments. The runtime validates and executes it, then submits the returned facts to MiniCPM. B0 runs without tools; B2 uses the saved oracle facts.</p>
+    <p className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">Whisper transcribes the input. The selected caller chooses an attached function and generates JSON arguments. The runtime validates and executes it, then submits the returned facts to MiniCPM. B0 runs without tools; B2 uses the saved oracle facts.</p>
     <ErrorNotice error={query.error} />
     <div className="grid gap-5 lg:grid-cols-2">
       {query.data?.map(tool => <Card key={tool.id}>

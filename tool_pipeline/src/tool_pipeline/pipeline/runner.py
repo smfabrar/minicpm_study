@@ -8,7 +8,7 @@ from pathlib import Path
 from speech_contracts import RunRequest
 
 from ..audio import read_pcm
-from ..models.granite import GraniteCaller
+from ..models.factory import create_caller
 from ..models.minicpm import NativeSession
 from ..models.whisper import InputTranscriber
 from ..telemetry import MemorySampler, TraceRecorder
@@ -25,7 +25,7 @@ class InferencePipeline:
         output_dir: Path,
         *,
         native_factory=NativeSession,
-        caller_factory=GraniteCaller,
+        caller_factory=create_caller,
         transcriber_factory=InputTranscriber,
     ):
         self.request = request

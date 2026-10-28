@@ -18,7 +18,7 @@ export function Tools({ study }: { study: Study }) {
   const action = useAction();
   const frozen = study.status === 'frozen';
   return <div className="space-y-5">
-    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">Granite selects a function and generates arguments from its schema.</p>
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">The selected caller chooses a function and generates arguments from its schema.</p>
       {!frozen && <div className="flex gap-2"><Button variant="outline" onClick={() => setPicker(true)}>Add from library</Button><Button onClick={() => setEditing(blankTool)}>Add tool</Button></div>}
     </div>
     <div className="grid gap-5 lg:grid-cols-2">{study.tools.map((tool: Tool) => <Card key={tool.id}>

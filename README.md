@@ -1,7 +1,7 @@
 # MiniCPM Study
 
 A recorded-audio study platform comparing MiniCPM-o 4.5 under B0 (native speech),
-B1 (Whisper + Granite tools), and B2 (oracle context). Live evaluation is deferred.
+B1 (Whisper + selectable Granite/Qwen tools), and B2 (oracle context). Live evaluation is deferred.
 
 **Start with [the setup guide](installation/README.md)** for the exact Vast.ai template,
 installation command, service startup, SSH tunnel, updates, and troubleshooting.

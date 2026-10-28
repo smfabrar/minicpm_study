@@ -1,5 +1,29 @@
 import type { Settings } from './types';
 
+export type CallerBackend = 'granite' | 'qwen3';
+
+export function callerSettings(settings: Settings) {
+  const backend = settings.caller_backend === 'qwen3' ? 'qwen3' : 'granite';
+  return {
+    backend,
+    model: String(settings.caller_model || (backend === 'granite'
+      ? settings.granite_model || 'ibm-granite/granite-4.0-350m' : 'Qwen/Qwen3-1.7B')),
+    revision: String(settings.caller_revision || (backend === 'granite' ? settings.granite_revision || 'main' : 'main')),
+    device: String(settings.caller_device || settings.granite_device || 'cuda:1'),
+  };
+}
+
+export function selectCaller(settings: Settings, backend: CallerBackend): Settings {
+  return {
+    ...settings,
+    caller_backend: backend,
+    caller_model: backend === 'qwen3' ? 'Qwen/Qwen3-1.7B'
+      : String(settings.granite_model || 'ibm-granite/granite-4.0-350m'),
+    caller_revision: backend === 'qwen3' ? 'main' : String(settings.granite_revision || 'main'),
+    caller_device: callerSettings(settings).device,
+  };
+}
+
 export function parseStudySettings(text: string): Settings {
   const value: unknown = JSON.parse(text);
   if (!value || typeof value !== 'object' || Array.isArray(value)) {

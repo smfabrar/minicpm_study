@@ -59,6 +59,41 @@ and starts the stack, `update.sh` refreshes it, and `start.sh`, `stop.sh`,
 implementation decisions and verification records are retained in
 [docs/HISTORY.md](docs/HISTORY.md).
 
+## Swappable native tool caller (2026-10-28)
+
+Implement the requested Qwen3-1.7B alternative inside `tool_pipeline`, using
+the existing Transformers runtime. Study settings select `caller_backend`
+(`granite` or `qwen3`), model, revision and device. Existing Granite settings
+remain valid; Granite remains the default. Qwen always applies its native chat
+template with `enable_thinking=False`. Both adapters return the existing
+call/respond/invalid actions and use the same tool validation and execution.
+No additional model server or agent framework is needed.
+
+- [x] Add caller settings and compatibility resolution in `speech_contracts`.
+- [x] Share model loading/generation/telemetry, add Qwen formatting/output
+  handling, and select the adapter in the pipeline. Preserve model-specific
+  trace names and record generic caller provenance and thinking mode.
+- [x] Add a shadcn selector and caller configuration fields to study settings;
+  update tool-designer wording and package documentation for both callers.
+- [x] Verify settings persistence, frozen requests, parser rejection paths,
+  Qwen generation arguments, tool execution and existing Granite behavior on
+  the CPU. Frontend settings/tool-design tests pass as well.
+- [ ] Build the frontend where npm/dependencies are available (unavailable in
+  this local environment; downloading them is blocked by DNS access).
+- [ ] Validate actual model quality, combined GPU memory use and latency on
+  the remote GPU machine.
+
+## Deferred tasks
+
+- [ ] **Low priority — reuse Kokoro across preparation jobs.** Deferred at the
+  user's request on 2026-10-28. Replace per-question process/model initialization
+  with a persistent preparation worker that reuses Kokoro and voice data. Keep
+  cold-load and per-question synthesis timings separate, and preserve inference
+  isolation during benchmark runs. Evidence from runtime job
+  `8e476b09a20645daa8dba4f64907a234` on RTX 3060: model loading 29.333 s,
+  synthesis 0.650 s, total worker time 37.490 s. These are one job's measurements,
+  not a general performance guarantee.
+
 ## Acceptance
 
 - Keep the study backend independent of model execution and tool injection.

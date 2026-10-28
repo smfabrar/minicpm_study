@@ -44,7 +44,7 @@ export function RuntimePage() {
       </CardHeader>
       <CardContent>
         <pre className="overflow-auto rounded-md bg-muted p-4 text-xs leading-7">
-          {'# On the GPU server\nspeech-runtime --host 127.0.0.1 --port 8766 --data ./runtime-data\n\n# On this computer\nssh -L 8766:127.0.0.1:8766 your-gpu-server\n\n# In Study → Settings\n# Set reference_audio to a WAV path on the GPU server.\n# Set native_url and Granite / Whisper devices for your server.'}
+          {'# On the GPU server\nspeech-runtime --host 127.0.0.1 --port 8766 --data ./runtime-data\n\n# On this computer\nssh -L 8766:127.0.0.1:8766 your-gpu-server\n\n# In Study → Settings\n# Set reference_audio to a WAV path on the GPU server.\n# Set native_url and caller / Whisper devices for your server.'}
         </pre>
       </CardContent>
     </Card>

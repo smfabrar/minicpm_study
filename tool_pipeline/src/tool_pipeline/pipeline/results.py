@@ -37,7 +37,7 @@ def build_result(
     state: RunState,
     native,
     memory: dict,
-    granite_revision: str | None,
+    caller_revision: str | None,
 ) -> dict:
     missing_acks = sorted(set(native.submitted.values()) - native.acknowledged) if native else []
     if missing_acks:
@@ -73,8 +73,19 @@ def build_result(
             "platform": platform.platform(),
             "hostname": platform.node(),
             "native_session_id": native.session_id if native else None,
-            "granite_resolved_revision": granite_revision,
-            "granite_calling_mode": "native" if granite_revision else None,
+            "caller_backend": request.settings.caller.backend if caller_revision else None,
+            "caller_model": request.settings.caller.model if caller_revision else None,
+            "caller_resolved_revision": caller_revision,
+            "caller_calling_mode": "native" if caller_revision else None,
+            "caller_enable_thinking": (
+                False if caller_revision and request.settings.caller.backend == "qwen3" else None
+            ),
+            "granite_resolved_revision": (
+                caller_revision if request.settings.caller.backend == "granite" else None
+            ),
+            "granite_calling_mode": (
+                "native" if caller_revision and request.settings.caller.backend == "granite" else None
+            ),
             "audio_sha256": request.audio_sha256,
             "settings": asdict(request.settings),
             "input_commit_policy": "complete_recording_after_replay",

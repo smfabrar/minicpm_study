@@ -3,6 +3,14 @@ import re
 
 
 @dataclass(frozen=True, slots=True)
+class CallerConfig:
+    backend: str
+    model: str
+    revision: str
+    device: str
+
+
+@dataclass(frozen=True, slots=True)
 class RunSettings:
     seed: int = 42
     repetitions: int = 1
@@ -14,6 +22,10 @@ class RunSettings:
     granite_model: str = "ibm-granite/granite-4.0-350m"
     granite_revision: str = "main"
     granite_device: str = "cuda:1"
+    caller_backend: str = "granite"
+    caller_model: str = ""
+    caller_revision: str = ""
+    caller_device: str = ""
     whisper_model: str = "tiny"
     whisper_device: str = "cuda"
     whisper_device_index: int = 1
@@ -46,6 +58,12 @@ class RunSettings:
                 raise ValueError(f"{definition.name} must be text")
         if type(self.paced) is not bool:
             raise ValueError("Paced must be a boolean")
+        if self.caller_backend not in {"granite", "qwen3"}:
+            raise ValueError("Caller backend must be granite or qwen3")
+        if not self.caller.model.strip() or not self.caller.revision.strip():
+            raise ValueError("Caller model and revision must not be blank")
+        if not re.fullmatch(r"cpu|cuda(?::[0-9]+)?", self.caller.device):
+            raise ValueError("Caller device must be cpu, cuda or cuda:<index>")
         if self.whisper_device not in {"cpu", "cuda", "auto"}:
             raise ValueError("Whisper device must be cpu, cuda or auto")
         if not re.fullmatch(r"cpu|cuda(?::[0-9]+)?", self.tts_device):
@@ -59,3 +77,14 @@ class RunSettings:
         if unknown:
             raise ValueError(f"Unknown settings: {', '.join(sorted(unknown))}")
         return cls(**value)
+
+    @property
+    def caller(self) -> CallerConfig:
+        """Resolve new settings without changing legacy study snapshots."""
+        granite = self.caller_backend == "granite"
+        return CallerConfig(
+            backend=self.caller_backend,
+            model=self.caller_model or (self.granite_model if granite else "Qwen/Qwen3-1.7B"),
+            revision=self.caller_revision or (self.granite_revision if granite else "main"),
+            device=self.caller_device or self.granite_device,
+        )

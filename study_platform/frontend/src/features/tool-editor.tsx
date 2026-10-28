@@ -26,7 +26,7 @@ export function ToolEditor({ initial, save }: { initial: ToolPayload; save: (too
     <fieldset disabled={pending}>
       <FieldGroup>
         <FormField label="Function name"><Input required pattern="[A-Za-z][A-Za-z0-9_]{0,63}" value={tool.name} onChange={e => setTool({ ...tool, name: e.target.value })} /></FormField>
-        <FormField label="Description shown to Granite"><Textarea required value={tool.description} onChange={e => setTool({ ...tool, description: e.target.value })} /></FormField>
+        <FormField label="Description shown to the tool caller"><Textarea required value={tool.description} onChange={e => setTool({ ...tool, description: e.target.value })} /></FormField>
         <FormField label="Implementation"><Choice value={tool.kind} options={['fixture', 'room', 'document', 'calculator', 'python']} onChange={kind => setTool({ ...tool, kind })} /></FormField>
         {python ? <>
           <FormField label="Parameters (JSON Schema)"><Textarea className="min-h-40 font-mono text-xs" value={parameters} onChange={e => setParameters(e.target.value)} /></FormField>
