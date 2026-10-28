@@ -142,3 +142,38 @@ argument quality must be evaluated separately from format handling.
 - Validate actual package installation, compilation, model initialization and
   short B0/B1/B2 speech runs on the selected GPU machine before collecting results.
   CPU fixtures do not establish GPU or model readiness.
+
+## Context delivery and response observation (2026-10-28)
+
+Approved scope: remove the extra boundary delay, compare B2 availability and
+payload wording, and distinguish evaluation from spoken correctness.
+
+- [x] In `pipeline/playback.py`, consume ready context after the scheduled wait,
+  immediately before sending. Preserve pacing and the full post-injection budget.
+- [x] Add validated `context_payload_mode` (`facts`, default; `answer_now`) to
+  shared settings and expose it alongside `oracle_delay_ms` in study settings.
+  Both B1 and B2 use the selected wording; save exact delivered text in telemetry.
+- [x] Add a trace-derived observation report and a separate audio artifact for
+  chunks received after evaluation. Show evaluation, new text, audio, observation
+  duration, and listening verdict separately. Buffered audio is not proof of a
+  new answer; spoken correctness remains a human listening measure.
+- [x] Verify ready-during-wait delivery, B2 early/late configuration, both payload
+  modes, missing acknowledgements, and no-new-text/buffered-audio reporting.
+
+GPU acceptance: clone the same prepared question into four configurations:
+`oracle_delay_ms` 0 / 4000 crossed with `context_payload_mode` facts / answer_now.
+Use B2, oracle fact B742, matching settings and a 12-second observation budget.
+Compare acknowledgements, subsequent text/audio and the listening verdict.
+Persistent model loading remains deferred. CPU checks cannot establish whether
+MiniCPM will speak the injected fact.
+
+Validation: 202 Python tests passed (one listening-socket check skipped); 12 frontend
+logic tests passed. Observation reports also reproduced both exported FP16 runs:
+no new text, zero/two audio chunks after evaluation. GPU behavior and production
+frontend build remain to be verified on the server (local frontend dependencies
+are unavailable).
+
+Review corrections: preserve acknowledgement/text evidence when clip assembly fails;
+measure the observation endpoint at transport closure, including interrupted runs;
+preserve whitespace deltas in reported text. Regression checks cover missing clips,
+matching acknowledgements, bounded observation intervals and literal text.

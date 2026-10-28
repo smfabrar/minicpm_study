@@ -105,6 +105,8 @@ class NativeSession:
                     text = prefix + " ".join(context["response_text"].split())
                 else:
                     prefix = "External information for the current request: "
+                    if self.settings.context_payload_mode == "answer_now":
+                        prefix = "Use this result to answer the user now: "
                     text = prefix + " ".join(context["facts"].split())
                 delivered = text.encode("utf-8")[:640].decode("utf-8", "ignore")
                 payload["tool_context"] = delivered

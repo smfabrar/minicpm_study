@@ -36,17 +36,18 @@ async def finish_response(
 ) -> None:
     remaining_units = drain_seconds
     while remaining_units > 0 or context_task is not None:
-        context = None
-        if context_task is not None and context_task.done():
-            context = await context_task
-            context_task = None  # Consume the result once, even when it contains no fact.
-            if context:
-                # The injection unit is followed by a full drain budget.
-                remaining_units = max(remaining_units, drain_seconds + 1)
-
         with trace.span("audio.silence_boundary_wait"):
             pending = context_task is not None and not context_task.done()
             await asyncio.sleep(1 if paced or pending else 0)
+
+        # Resolve after the wait so results ready during it use this boundary.
+        context = None
+        if context_task is not None and context_task.done():
+            context = await context_task
+            context_task = None
+            if context:
+                remaining_units = max(remaining_units, drain_seconds + 1)
+
         await native.send(SILENCE, context=context, silence=True)
         remaining_units = max(0, remaining_units - 1)
         if native.error:

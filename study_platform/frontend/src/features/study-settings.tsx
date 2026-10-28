@@ -79,6 +79,26 @@ export function StudySettings({ study }: { study: Study }) {
                 if (parsedSettings) changeSettings(JSON.stringify({ ...parsedSettings, reference_audio: event.target.value }, null, 2));
               }} />
           </FormField>
+          <FormField label="Injected fact wording (B1 and B2)">
+            <Select disabled={disabled || !parsedSettings} value={String(parsedSettings?.context_payload_mode ?? 'facts')}
+              onValueChange={value => {
+                if (parsedSettings) changeSettings(JSON.stringify({ ...parsedSettings, context_payload_mode: value }, null, 2));
+              }}>
+              <SelectTrigger aria-label="Injected fact wording"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="facts">External information (original)</SelectItem>
+                <SelectItem value="answer_now">Use this result to answer the user now</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="B2 oracle delay after input ends (ms)">
+            <Input type="number" min="0" max="60000" step="1" disabled={disabled || !parsedSettings}
+              value={Number(parsedSettings?.oracle_delay_ms ?? 1000)}
+              onChange={event => {
+                if (parsedSettings) changeSettings(JSON.stringify({ ...parsedSettings, oracle_delay_ms: Number(event.target.value) }, null, 2));
+              }} />
+          </FormField>
+          <p className="text-sm text-muted-foreground">For a timing comparison, clone the same prepared case and run B2 with 0 ms and 4000 ms, using each wording. The oracle fact comes from the case’s B2 reference result.</p>
           <FormField label="Tool-calling model (B1)">
             <Select disabled={disabled || !parsedSettings} value={caller.backend}
               onValueChange={value => {

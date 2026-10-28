@@ -63,6 +63,7 @@ export function RunPage() {
         <TabsTrigger value="provenance">Request & provenance</TabsTrigger>
       </TabsList>
       <TabsContent value="review">
+        <ContextObservation run={run} />
         <AudioReview key={run.id} run={run} />
       </TabsContent>
       <TabsContent value="timeline">
@@ -70,6 +71,7 @@ export function RunPage() {
       </TabsContent>
       <TabsContent value="tools">
         <div className="space-y-5">
+          <ContextObservation run={run} />
           <Card>
             <CardHeader>
               <CardTitle>Tool decisions and injection</CardTitle>
@@ -166,4 +168,37 @@ function AudioReview({ run }: {
       </CardContent>
     </Card>
   </div>;
+}
+
+function ContextObservation({ run }: { run: Run }) {
+  const observation = run.result?.context_observation;
+  if (!observation || observation.status === 'not_submitted') return null;
+  const labels: Record<string, string> = {
+    not_evaluated: 'Context submitted; evaluation not confirmed',
+    evaluated_no_new_text: 'Evaluated but no new answer text',
+    evaluated_with_new_text: 'New text received after evaluation',
+    unavailable: 'Context observation unavailable',
+  };
+  const audio = observation.output_audio && run.artifact_directory
+    ? artifactUrl(`${run.artifact_directory}/${observation.output_audio.split('/').pop()}`) : null;
+  const expected = run.snapshot.cases.find(item => item.id === run.case_id)?.expected_answer;
+  return <Card className="mb-5">
+    <CardHeader>
+      <CardTitle>{labels[observation.status] ?? observation.status}</CardTitle>
+      <CardDescription>Run completion means collection finished. Spoken correctness is scored separately.</CardDescription>
+    </CardHeader>
+    <CardContent className="space-y-3 text-sm">
+      <p>Fact or guidance evaluated: {observation.evaluated === undefined ? 'Unknown' : observation.evaluated ? 'Yes' : 'No'}</p>
+      <p>New text after evaluation: {observation.new_text === undefined ? 'Unknown' : observation.new_text || 'None recorded'}</p>
+      <p>Audio received after evaluation: {observation.audio_chunks ?? 'Unknown'} chunks · {milliseconds(observation.audio_duration_ms)}</p>
+      <p>Observation after evaluation: {milliseconds(observation.observation_ms ?? undefined)}</p>
+      {observation.window_completed === false && <p>Observation window interrupted; this is partial evidence.</p>}
+      {observation.clip_error && <p>Interval audio unavailable: {observation.clip_error}</p>}
+      {audio && <audio className="w-full" controls preload="metadata" src={audio} />}
+      <p className="text-muted-foreground">This audio can include buffered speech from before injection. Listen and use the review below to confirm whether the expected fact was spoken.</p>
+      <p>Expected spoken answer: {expected || 'Not specified'}</p>
+      <p>Spoken correctness (listening review): {run.review?.verdict ?? 'unreviewed'}</p>
+      {observation.error && <p>{observation.error}</p>}
+    </CardContent>
+  </Card>;
 }

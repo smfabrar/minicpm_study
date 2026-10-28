@@ -17,6 +17,7 @@ class RunSettings:
     repetitions: int = 1
     paced: bool = True
     oracle_delay_ms: int = 1000
+    context_payload_mode: str = "facts"
     drain_seconds: int = 12
     timeout_seconds: int = 240
     system_prompt: str = "You are a helpful voice assistant. Use current external information when available. Answer concisely."
@@ -60,6 +61,8 @@ class RunSettings:
                 raise ValueError(f"{definition.name} must be text")
         if type(self.paced) is not bool:
             raise ValueError("Paced must be a boolean")
+        if self.context_payload_mode not in {"facts", "answer_now"}:
+            raise ValueError("Context payload mode must be facts or answer_now")
         if self.caller_backend not in {"granite", "qwen3"}:
             raise ValueError("Caller backend must be granite or qwen3")
         if not self.caller.model.strip() or not self.caller.revision.strip():

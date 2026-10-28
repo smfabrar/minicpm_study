@@ -14,6 +14,7 @@ from ..models.whisper import InputTranscriber
 from ..telemetry import MemorySampler, TraceRecorder
 from ..tools import ToolRegistry
 from .context import resolve_oracle, resolve_tool
+from .observation import observe_context
 from .playback import finish_response, replay_input
 from .results import RunState, build_result, save_result
 
@@ -41,6 +42,7 @@ class InferencePipeline:
         self.transcriber = None
         self.tools = None
         self.context_task = None
+        self.observation_end_ns = None
 
     async def run(self) -> dict:
         settings = self.request.settings
@@ -63,6 +65,14 @@ class InferencePipeline:
         result = build_result(
             self.request, self.state, self.native, sampler.report(), revision, loading
         )
+        try:
+            result["context_observation"] = observe_context(
+                self.trace.snapshot(), self.output_dir, self.observation_end_ns
+            )
+            result["context_observation"]["window_completed"] = self.state.pipeline_end_ns is not None
+        except Exception as exc:
+            # Preserve the original inference evidence if derived audio cannot be saved.
+            result["context_observation"] = {"status": "unavailable", "error": str(exc)}
         save_result(self.output_dir, result, self.trace)
         return result
 
@@ -130,10 +140,12 @@ class InferencePipeline:
         if self.native:
             try:
                 await self.native.close()
+                self.observation_end_ns = time.perf_counter_ns()
                 self.state.output_audio = self.native.assemble()
             except Exception as exc:
                 self.state.status = "failed"
                 self.state.error = self.state.error or f"Native finalization failed: {exc}"
+                self.observation_end_ns = self.observation_end_ns or time.perf_counter_ns()
                 self.trace.event("native.finalization_failed", error=str(exc))
 
         if self.caller:

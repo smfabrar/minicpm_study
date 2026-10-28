@@ -72,6 +72,20 @@ export interface Run {
         observed_peak_process_gpu_bytes?: number;
       };
     };
+    context_observation?: {
+      status: string;
+      evaluated?: boolean;
+      clip_error?: string | null;
+      window_completed?: boolean;
+      new_text?: string;
+      audio_chunks?: number;
+      audio_duration_ms?: number;
+      output_audio?: string | null;
+      observation_ms?: number | null;
+      evaluation_latency_ms?: number | null;
+      first_text_after_evaluation_ms?: number | null;
+      error?: string;
+    };
     audio_path?: string;
     [key: string]: unknown;
   } | null;

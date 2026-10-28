@@ -260,3 +260,28 @@ CPU protocol and timing checks pass. The real TCP fixture is skipped only when t
 ## Authored Python tools
 
 `kind: "python"` tools carry a `parameters` object schema and `python_code` defining `execute(arguments)`. The pipeline validates arguments, runs the saved source in a separate process, applies `timeout_seconds`, and records request/source/result/log files. Code runs with the runtime account's access and packages. The study backend submits definitions and collects artifacts; it does not execute them. See [the tool designer guide](../docs/TOOL_DESIGNER.md) for details. The runtime adds `GET /jobs/{id}/logs` for bounded live log tails.
+
+### Compare injection timing and response wording
+
+In Study settings, select **Injected fact wording** and **B2 oracle delay**.
+`context_payload_mode: "facts"` retains the original external-information prefix;
+`"answer_now"` uses `Use this result to answer the user now:`. This applies to
+successful B1 facts and B2 oracle facts; clarification/error guidance is unchanged.
+The saved request and provenance retain the selection, and `context.payload`
+records the exact transmitted text. Existing requests default to `facts`.
+
+For the seminar check, reuse the same prepared recording and set the case's B2
+reference result to `The robotics seminar is in room B742.` Clone into four
+configurations: 0 and 4000 ms oracle delays, each with facts and answer_now wording.
+Run B2 for each. Keep `paced: true`, `drain_seconds: 12` and all other settings
+identical. Delays start at input end; delivery occurs at the next audio boundary.
+
+The run page shows evaluation separately from subsequent text/audio. The runtime
+saves `context_observation` and, when applicable, `after_context.wav` containing
+chunks received after the matching evaluation acknowledgement. These chunks may
+include speech buffered before injection. “Evaluated but no new answer text”
+means no subsequent text was received within the recorded window, even if old
+audio continued. A completed run means collection completed, not a correct answer.
+Listen to the interval clip and full output, optionally transcribe the full output,
+and save the listening verdict to establish whether B742 was spoken. Expected
+answers and human correctness judgments remain outside the inference pipeline.
