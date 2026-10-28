@@ -182,7 +182,8 @@ def test_invalid_native_call_delivers_failure_guidance_and_preserves_error(tmp_p
 
 
 @pytest.mark.parametrize("quantization", ["none", "nf4"])
-def test_qwen_pipeline_retains_generic_provenance_and_native_ack(tmp_path, quantization):
+@pytest.mark.parametrize("bare_json", [False, True])
+def test_qwen_pipeline_retains_generic_provenance_and_native_ack(tmp_path, quantization, bare_json):
     from tool_pipeline.models.qwen import QwenCaller
 
     def qwen_fixture(settings, registry, trace):
@@ -192,9 +193,9 @@ def test_qwen_pipeline_retains_generic_provenance_and_native_ack(tmp_path, quant
         caller.model_revision = 'qwen-fixture-sha'
         caller.loading_provenance = {'quantization': quantization, 'compute_dtype': 'float16'}
         caller.gpu_pairs = []
-        caller.generate = lambda messages, schemas: (
-            '<tool_call>{"name":"room_lookup","arguments":{"name":"robotics seminar"}}</tool_call><|im_end|>'
-        )
+        payload = '{"name":"room_lookup","arguments":{"name":"robotics seminar"}}'
+        raw = payload if bare_json else f'<tool_call>{payload}</tool_call>'
+        caller.generate = lambda messages, schemas: raw + '<|im_end|>'
         return caller
 
     pipeline = make_pipeline(tmp_path, caller=qwen_fixture)

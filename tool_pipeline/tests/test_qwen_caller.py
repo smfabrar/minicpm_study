@@ -171,3 +171,36 @@ def test_loading_resolves_selected_model_revision_and_device(monkeypatch, backen
     assert loaded == [(expected_model, 'main' if backend == 'qwen3' else 'granite-sha')]
     assert caller.model_revision == 'pinned-commit'
     assert caller.model.transfer == {'device': 'cuda:0', 'dtype': 'float16'}
+
+
+def test_recorded_bare_room_call_is_parsed_without_rewriting_incomplete_argument():
+    raw = '{"name": "room_lookup", "arguments": {"name": "robotic"}}<|im_end|>'
+    caller = caller_with_output(raw)
+    action = caller.route('Where is the robotic seminar?')
+    assert action == {'kind': 'call', 'tool': 'room_lookup', 'arguments': {'name': 'robotic'}, 'raw': raw}
+    with pytest.raises(LookupError, match='room not found'):
+        asyncio.run(caller.registry.execute(action['tool'], action['arguments'], 'Where is the robotic seminar?'))
+
+
+def test_bare_call_with_complete_event_name_executes_existing_alias_lookup():
+    raw = '{"name":"room_lookup","arguments":{"name":"robotic seminar"}}<|im_end|>'
+    caller = caller_with_output(raw)
+    action = caller.route('Where is the robotic seminar?')
+    assert action['kind'] == 'call'
+    result = asyncio.run(caller.registry.execute(action['tool'], action['arguments'], 'Where is the robotic seminar?'))
+    assert result['facts'] == 'The robotics seminar is in room B742.'
+
+
+@pytest.mark.parametrize('raw', [
+    '{"name":"unknown_tool","arguments":{}}<|im_end|>',
+    '{"name":"calculator","arguments":[]}<|im_end|>',
+    '{"name":"calculator","arguments":{},"extra":true}<|im_end|>',
+    '{"name":"calculator","arguments":{}} {"name":"calculator","arguments":{}}<|im_end|>',
+    '[{"name":"calculator","arguments":{}}]<|im_end|>',
+    'Here is the call: {"name":"calculator","arguments":{}}<|im_end|>',
+    '{"name":"calculator","arguments":{}} Done.<|im_end|>',
+    '{"name":"calculator","name":"room_lookup","arguments":{}}<|im_end|>',
+    '{"name":"calculator","arguments":{"expression":"2+2","expression":"3+3"}}<|im_end|>',
+])
+def test_bare_json_acceptance_does_not_allow_ambiguous_calls_or_prose(raw):
+    assert caller_with_output(raw).route('What is two plus two?')['kind'] == 'invalid'

@@ -112,6 +112,15 @@ Debian include scheme and fail with the missing path before importing model
 packages. Do not treat a generic compiler exit status as proof of missing
 headers; driver-linking errors require their own diagnosis.
 
+## Qwen bare JSON call handling (2026-10-28)
+
+GPU evidence showed a valid bare name/arguments object rejected by the shared
+tag-oriented parser. The Qwen adapter accepts this exact single-object shape
+and preserves raw output and arguments, while rejecting duplicate keys,
+multiple objects, extra fields and mixed prose. Tool validation remains in the
+executor. The recorded argument `robotic` is not expanded to `robotic seminar`;
+argument quality must be evaluated separately from format handling.
+
 ## Deferred tasks
 
 - [ ] **Low priority — reuse Kokoro across preparation jobs.** Deferred at the

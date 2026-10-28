@@ -161,6 +161,14 @@ using the same OpenAI function schemas and JSON-in-`<tool_call>` format. Qwen
 end tokens and an empty thinking prefix are removed before parsing. Nonempty
 reasoning, unknown tools, malformed calls and multiple calls are rejected.
 
+Qwen also accepts a single bare JSON object containing exactly `name` (text)
+and `arguments` (an object), as observed in GPU runs. Raw output is retained.
+Duplicate JSON keys, extra fields, surrounding prose, arrays and multiple
+objects are rejected. Tool allowlisting, schema validation and grounding still
+apply. Parsing does not repair generated arguments: `robotic` remains `robotic`
+and fails the default room lookup; `robotic seminar` is a configured alias for
+`robotics seminar`.
+
 The runtime downloads Qwen weights at first use with the existing Transformers
 model extras. The default snapshot contains roughly 4 GB of weights; ensure
 additional disk and GPU memory are available alongside MiniCPM. No new model

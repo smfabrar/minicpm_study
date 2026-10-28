@@ -154,7 +154,7 @@ class NativeToolCaller:
         raw = self.generate(messages, self.registry.schemas)
         with self.trace.span(f"{self.family}.parse_output", raw=raw):
             message = self.clean_output(raw)
-            action = reference_module("caller").parse_granite_output(message)
+            action = self.parse_output(message)
             if action.kind == "call":
                 if action.tool not in self.registry.definitions:
                     return {"kind": "invalid", "raw": raw, "message": "Tool is not allowlisted"}
@@ -174,6 +174,9 @@ class NativeToolCaller:
                 return {"kind": "respond", "message": message, "raw": raw}
             return {"kind": "invalid", "raw": raw,
                     "message": action.message or "Expected a native tool call or plain assistant response"}
+
+    def parse_output(self, message):
+        return reference_module("caller").parse_granite_output(message)
 
     def clean_output(self, raw):
         message = raw.strip()
