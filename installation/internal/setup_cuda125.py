@@ -117,7 +117,11 @@ class HostPreflight:
             self.runner.run([*prefix, "apt-get", "update"])
             self.runner.run([*prefix, "apt-get", "install", "-y", "build-essential", "gcc-12",
                              "g++-12", "git", "ninja-build", "pkg-config", "espeak-ng",
-                             "libsndfile1", "ca-certificates"])
+                             "libsndfile1", "ca-certificates",
+                             f"python{sys.version_info.major}.{sys.version_info.minor}-dev"])
+        # Fail before model installs/native builds, using the selected interpreter.
+        from gpu_setup_support import verify_python_headers
+        verify_python_headers()
         for name in ("git", "gcc-12", "g++-12", "ninja", "espeak-ng"):
             if shutil.which(name) is None:
                 raise RuntimeError(f"Missing {name}; install prerequisites or use --install-system-deps")

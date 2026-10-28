@@ -270,6 +270,19 @@ Settings, set **Caller device** to `cuda:0`, select **4-bit NF4** under
 precision until explicitly edited. Run one B1 case before the full matrix;
 quantization does not guarantee enough headroom alongside MiniCPM on 12 GB.
 
+The installer installs Python development headers for Triton's C helper. It
+checks the runtime interpreter's actual include directory and, when necessary,
+installs the matching `python3.11-dev` or `python3.12-dev` package. Custom Python
+builds must provide their own matching headers. The check runs before model
+package verification and reports the missing `Python.h` path explicitly.
+
+If updating from an installer that predates this check, download the current
+`installation/install.sh` using the installation command above and rerun with
+the same prefix. This ensures the updated prerequisite step runs before setup.
+For a Triton compiler failure, retain the GCC diagnostic above the traceback:
+`Python.h: No such file or directory` identifies missing Python headers;
+`cannot find -lcuda` is a separate driver-library linking problem.
+
 ## Resume installation and diagnose failures
 
 Preserve `logs/install.log` and rerun the downloaded installer with the same prefix

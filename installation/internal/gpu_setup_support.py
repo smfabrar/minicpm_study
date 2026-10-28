@@ -5,6 +5,8 @@ import ctypes
 import hashlib
 import importlib.metadata
 import json
+import sys
+import sysconfig
 import tempfile
 import wave
 from dataclasses import asdict
@@ -49,7 +51,25 @@ def probe_gpu() -> dict:
             "devices": devices, "library_paths": [str(directory) for directory in libraries]}
 
 
+def verify_python_headers() -> dict:
+    """Use the same include scheme as Triton's C-extension builder."""
+    scheme = sysconfig.get_default_scheme()
+    if scheme == "posix_local":
+        scheme = "posix_prefix"
+    include = Path(sysconfig.get_paths(scheme=scheme)["include"])
+    header = include / "Python.h"
+    package = f"python{sys.version_info.major}.{sys.version_info.minor}-dev"
+    if not header.is_file():
+        raise RuntimeError(
+            f"Triton needs the selected Python's development headers: missing {header}. "
+            f"On Ubuntu/Debian install {package} and rerun the same update command. "
+            "A custom Python interpreter must include its own matching headers."
+        )
+    return {"include_directory": str(include), "development_package": package}
+
+
 def verify_imports() -> dict:
+    python_headers = verify_python_headers()
     import ctranslate2
     importlib.import_module("kokoro")
     import transformers
@@ -66,6 +86,7 @@ def verify_imports() -> dict:
         raise RuntimeError("CTranslate2 cannot access a CUDA device")
     return {"transformers": transformers.__version__, "ctranslate2": ctranslate2.__version__,
             "bitsandbytes": bitsandbytes.__version__,
+            "python_headers": python_headers,
             "audio_decoder": verify_audio_decoder(),
             "kokoro": importlib.metadata.version("kokoro"), "pipeline": str(Path(tool_pipeline.__file__).parent),
             "reference": str(Path(duplex_tools.__file__).parent)}
@@ -138,14 +159,16 @@ def run_settings(models: dict, demo: Path, patch: Path, device_count: int) -> di
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=("probe", "verify", "verify-audio", "download", "settings"))
+    parser.add_argument("operation", choices=("probe", "verify", "verify-audio", "verify-python-headers", "download", "settings"))
     parser.add_argument("--root", type=Path)
     parser.add_argument("--models", type=json.loads)
     parser.add_argument("--demo", type=Path)
     parser.add_argument("--patch", type=Path)
     parser.add_argument("--device-count", type=int)
     args = parser.parse_args()
-    if args.operation == "verify-audio":
+    if args.operation == "verify-python-headers":
+        result = verify_python_headers()
+    elif args.operation == "verify-audio":
         result = verify_audio_decoder()
     elif args.operation == "download":
         if args.root is None:

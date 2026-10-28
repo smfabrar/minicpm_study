@@ -47,3 +47,24 @@ def test_update_reuses_installer_options_without_changes(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Dry run: no changes" in result.stdout
     assert not (tmp_path / "absent").exists()
+
+
+def test_missing_selected_python_headers_gives_actionable_error_before_model_import(tmp_path, monkeypatch):
+    monkeypatch.setattr(support.sysconfig, 'get_paths', lambda **kwargs: {'include': str(tmp_path)})
+    monkeypatch.setitem(sys.modules, 'bitsandbytes', None)
+    with pytest.raises(RuntimeError, match=r'Triton needs.*Python.h.*python3\.[0-9]+-dev'):
+        support.verify_imports()
+
+
+def test_python_header_check_uses_triton_debian_include_scheme(tmp_path, monkeypatch):
+    (tmp_path / 'Python.h').write_text('/* header fixture */')
+    monkeypatch.setattr(support.sysconfig, 'get_default_scheme', lambda: 'posix_local')
+
+    def paths(*, scheme):
+        assert scheme == 'posix_prefix'
+        return {'include': str(tmp_path)}
+
+    monkeypatch.setattr(support.sysconfig, 'get_paths', paths)
+    result = support.verify_python_headers()
+    assert result['include_directory'] == str(tmp_path)
+    assert result['development_package'] == f'python{sys.version_info.major}.{sys.version_info.minor}-dev'

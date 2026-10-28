@@ -56,6 +56,13 @@ def test_bootstrap_reuses_explicit_toolkit_despite_cuda13_on_path_and_safe_rerun
     fixture.mkdir()
     (fixture / "installation/internal").mkdir(parents=True)
     shutil.copyfile(ROOT / "installation/internal/cuda_toolkit.py", fixture / "installation/internal/cuda_toolkit.py")
+    support = (ROOT / "installation/internal/gpu_setup_support.py").read_text()
+    # Simulate a selected Python whose headers differ from the distro default.
+    (fixture / "installation/internal/gpu_setup_support.py").write_text(
+        'import os, sysconfig\n'
+        'sysconfig.get_paths = lambda **kwargs: {"include": os.environ["FIXTURE_PYTHON_INCLUDE"]}\n'
+        + support
+    )
     (fixture / "installation/internal/setup_cuda125.py").write_text(
         'import json, os, sys\n'
         'open(os.environ["BOOTSTRAP_CALL"], "w").write(json.dumps({"args": sys.argv[1:], '
@@ -74,7 +81,13 @@ def test_bootstrap_reuses_explicit_toolkit_despite_cuda13_on_path_and_safe_rerun
     executable(tools / "uname", '#!/bin/sh\ncase "$1" in -s) echo Linux;; -m) echo x86_64;; esac\n')
     executable(tools / "df", '#!/bin/sh\necho "Filesystem 1024-blocks Used Available Capacity Mounted on"\necho "/fixture 62914560 10485760 52428800 17% /fixture"\n')
     executable(tools / "nvidia-smi", '#!/bin/sh\necho "580.159.03"\n')
-    executable(tools / "apt-get", '#!/bin/sh\nexit 0\n')
+    executable(tools / "apt-get", f'#!{sys.executable}\n'
+        'import json, os, pathlib, sys\n'
+        'with open(os.environ["FIXTURE_APT_LOG"], "a") as log: log.write(json.dumps(sys.argv[1:]) + "\\n")\n'
+        f'if "python{sys.version_info.major}.{sys.version_info.minor}-dev" in sys.argv:\n'
+        '    header = pathlib.Path(os.environ["FIXTURE_PYTHON_INCLUDE"]) / "Python.h"\n'
+        '    header.parent.mkdir(parents=True, exist_ok=True)\n'
+        '    header.write_text("/* fixture headers */")\n')
     executable(tools / "sudo", '#!/bin/sh\nexec "$@"\n')
     executable(tools / "nvcc", '#!/bin/sh\necho "Cuda compilation tools, release 13.0, V13.0"\n')
     executable(tools / "node", '#!/bin/sh\nexit 1\n')
@@ -106,13 +119,18 @@ def test_bootstrap_reuses_explicit_toolkit_despite_cuda13_on_path_and_safe_rerun
         'sys.exit(0 if hashlib.sha256(pathlib.Path(filename).read_bytes()).hexdigest()==digest else 1)\n')
     prefix = tmp_path / "installation with spaces"
     call = tmp_path / "call.json"
+    apt_log = tmp_path / "apt.jsonl"
     environment = dict(os.environ, PATH=f"{tools}:{os.environ['PATH']}",
         SPEECH_SETUP_PYTHON=sys.executable, CUDA_HOME=str(tmp_path / "cuda13"),
         FIXTURE_SOURCE=str(fixture),
-        FIXTURE_NODE=str(node_archive), FIXTURE_CHECKSUMS=str(checksums), BOOTSTRAP_CALL=str(call))
+        FIXTURE_NODE=str(node_archive), FIXTURE_CHECKSUMS=str(checksums), BOOTSTRAP_CALL=str(call),
+        FIXTURE_APT_LOG=str(apt_log), FIXTURE_PYTHON_INCLUDE=str(tmp_path / 'selected-python-headers'))
     command = ["bash", ROOT / "installation/install.sh", "--prefix", prefix, "--cuda-home", cuda, "--skip-models"]
     result = subprocess.run(command, env=environment, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+    apt_commands = [json.loads(line) for line in apt_log.read_text().splitlines()]
+    assert any('python3-dev' in command for command in apt_commands)
+    assert any(f'python{sys.version_info.major}.{sys.version_info.minor}-dev' in command for command in apt_commands)
     recorded = json.loads(call.read_text())
     arguments = recorded["args"]
     assert recorded["tmpdir"] == str(prefix / "tmp")

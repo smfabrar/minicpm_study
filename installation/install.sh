@@ -132,7 +132,7 @@ fi
 "${sudo_command[@]}" apt-get update
 "${sudo_command[@]}" apt-get install -y \
     git curl ca-certificates bzip2 xz-utils tar build-essential gcc-12 g++-12 \
-    ninja-build pkg-config espeak-ng libsndfile1 python3 python3-venv
+    ninja-build pkg-config espeak-ng libsndfile1 python3 python3-venv python3-dev
 mkdir -p "$install_root"
 install_root="$(cd -- "$install_root" && pwd)"
 mkdir -p "$install_root/cache" "$install_root/bin" "$install_root/tmp"
@@ -218,6 +218,17 @@ checkout "$install_root/minicpm_study" "$study_repository" "$study_ref"
 checkout "$install_root/minicpm_tool" "$reference_repository" "$reference_ref"
 git -C "$install_root/minicpm_study" rev-parse HEAD > "$install_root/study-revision.txt"
 find_python
+# bitsandbytes imports Triton, which builds a C extension against this Python.
+header_check="$install_root/minicpm_study/installation/internal/gpu_setup_support.py"
+header_python="$setup_python"
+if [[ -x "$install_root/runtime/venv/bin/python" ]]; then
+    header_python="$install_root/runtime/venv/bin/python"
+fi
+if ! "$header_python" "$header_check" verify-python-headers; then
+    development_package="$("$header_python" -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}-dev")')"
+    "${sudo_command[@]}" apt-get install -y "$development_package"
+    "$header_python" "$header_check" verify-python-headers
+fi
 if ! "$services_stopped" && [[ -x "$install_root/runtime/venv/bin/python" && -x "$install_root/runtime/bin/start_runtime.sh" ]]; then
     "$install_root/runtime/venv/bin/python" "$control" stop --root "$install_root/runtime"
 fi

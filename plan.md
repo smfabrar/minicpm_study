@@ -102,6 +102,16 @@ full FP16 GPU copy first or silently fall back to another precision/device.
   guarantee is implied. Local production frontend build still requires npm and
   dependencies that are unavailable in this environment.
 
+## Triton Python development headers (2026-10-28)
+
+The NF4 dependency imports Triton, which compiles a Python C extension. The
+bootstrap previously installed Python/venv but omitted development headers.
+Install distro-default headers and check the actual runtime interpreter; if
+needed, install its matching major/minor development package. Use Triton's
+Debian include scheme and fail with the missing path before importing model
+packages. Do not treat a generic compiler exit status as proof of missing
+headers; driver-linking errors require their own diagnosis.
+
 ## Deferred tasks
 
 - [ ] **Low priority — reuse Kokoro across preparation jobs.** Deferred at the
