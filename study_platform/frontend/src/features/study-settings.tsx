@@ -100,9 +100,26 @@ export function StudySettings({ study }: { study: Study }) {
                 }} />
             </FormField>)}
           </div>
-          {caller.backend === 'qwen3' && <p className="text-sm text-muted-foreground">
-            Qwen uses its native tool template with thinking disabled. Its weights download on the pipeline server at first use; allow time and disk space for the download.
-          </p>}
+          {caller.backend === 'qwen3' && <>
+            <FormField label="Caller weight precision">
+              <Select disabled={disabled || !parsedSettings} value={caller.quantization}
+                onValueChange={value => {
+                  if (parsedSettings) changeSettings(JSON.stringify({ ...parsedSettings, caller_quantization: value }, null, 2));
+                }}>
+                <SelectTrigger aria-label="Caller weight precision"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Standard · FP16 on GPU / FP32 on CPU</SelectItem>
+                  <SelectItem value="nf4">4-bit NF4 · CUDA required</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+            <p className="text-sm text-muted-foreground">
+              Qwen uses its native tool template with thinking disabled. 4-bit NF4 reduces weight memory and uses FP16 computation; it requires a CUDA caller device. Run one B1 case to check combined GPU memory before the full matrix.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Its original weights download on the pipeline server at first use; allow time and disk space for the download.
+            </p>
+          </>}
           <div className="flex flex-wrap items-center gap-3">
             {study.status === 'draft' && <Button type="submit" disabled={action.isPending}>
               {action.isPending ? 'Saving…' : 'Save configuration'}

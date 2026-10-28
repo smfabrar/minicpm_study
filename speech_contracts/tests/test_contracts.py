@@ -83,3 +83,22 @@ def test_qwen_selection_roundtrips_without_reusing_granite_snapshot():
 def test_invalid_caller_configuration_fails_before_inference(changes):
     with pytest.raises(ValueError, match='Caller'):
         RunSettings(**changes)
+
+
+def test_nf4_is_saved_in_requests_without_changing_prepared_audio_identity():
+    settings = RunSettings(caller_backend='qwen3', caller_device='cuda:0', caller_quantization='nf4')
+    request = RunRequest('B1', '/input.wav', settings=settings)
+    restored = RunRequest.from_dict(request.to_payload()).settings
+    assert restored.caller.quantization == 'nf4'
+    assert RunSettings.from_dict({}).caller.quantization == 'none'
+    assert SynthesisRequest('Hello', settings).cache_key() == SynthesisRequest('Hello').cache_key()
+
+
+@pytest.mark.parametrize('changes', [
+    {'caller_quantization': 'int8'},
+    {'caller_backend': 'qwen3', 'caller_device': 'cpu', 'caller_quantization': 'nf4'},
+    {'caller_backend': 'granite', 'caller_device': 'cuda:0', 'caller_quantization': 'nf4'},
+])
+def test_unsupported_quantization_is_rejected_before_job_submission(changes):
+    with pytest.raises(ValueError, match='quantization'):
+        RunSettings(**changes)

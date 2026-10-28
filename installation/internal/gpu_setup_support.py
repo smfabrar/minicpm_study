@@ -53,6 +53,7 @@ def verify_imports() -> dict:
     import ctranslate2
     importlib.import_module("kokoro")
     import transformers
+    import bitsandbytes
     import tool_pipeline
     import duplex_tools
     import spacy
@@ -64,6 +65,7 @@ def verify_imports() -> dict:
     if ctranslate2.get_cuda_device_count() < 1:
         raise RuntimeError("CTranslate2 cannot access a CUDA device")
     return {"transformers": transformers.__version__, "ctranslate2": ctranslate2.__version__,
+            "bitsandbytes": bitsandbytes.__version__,
             "audio_decoder": verify_audio_decoder(),
             "kokoro": importlib.metadata.version("kokoro"), "pipeline": str(Path(tool_pipeline.__file__).parent),
             "reference": str(Path(duplex_tools.__file__).parent)}

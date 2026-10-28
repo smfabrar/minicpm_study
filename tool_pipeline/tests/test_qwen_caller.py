@@ -140,6 +140,12 @@ def test_loading_resolves_selected_model_revision_and_device(monkeypatch, backen
     loaded = []
 
     class Model:
+        dtype = 'torch.float16'
+        device = 'cuda:0'
+
+        def get_memory_footprint(self):
+            return 3400000000
+
         def to(self, **kwargs):
             self.transfer = kwargs
             return self

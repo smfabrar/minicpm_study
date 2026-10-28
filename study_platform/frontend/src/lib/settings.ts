@@ -10,6 +10,7 @@ export function callerSettings(settings: Settings) {
       ? settings.granite_model || 'ibm-granite/granite-4.0-350m' : 'Qwen/Qwen3-1.7B')),
     revision: String(settings.caller_revision || (backend === 'granite' ? settings.granite_revision || 'main' : 'main')),
     device: String(settings.caller_device || settings.granite_device || 'cuda:1'),
+    quantization: String(settings.caller_quantization || 'none'),
   };
 }
 
@@ -21,6 +22,7 @@ export function selectCaller(settings: Settings, backend: CallerBackend): Settin
       : String(settings.granite_model || 'ibm-granite/granite-4.0-350m'),
     caller_revision: backend === 'qwen3' ? 'main' : String(settings.granite_revision || 'main'),
     caller_device: callerSettings(settings).device,
+    caller_quantization: 'none',
   };
 }
 

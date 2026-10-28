@@ -263,6 +263,13 @@ If migrating from a revision without `installation/`, use the downloadable insta
 command above with the same prefix. You do not need a manual Git checkout or
 separate package/frontend updaters. Reload the browser after a successful update.
 
+The update also installs the runtime's bitsandbytes dependency for Qwen NF4.
+To reduce Qwen weight memory, clone a frozen study, select **Qwen3-1.7B** in
+Settings, set **Caller device** to `cuda:0`, select **4-bit NF4** under
+**Caller weight precision**, then save. Existing studies keep their previous
+precision until explicitly edited. Run one B1 case before the full matrix;
+quantization does not guarantee enough headroom alongside MiniCPM on 12 GB.
+
 ## Resume installation and diagnose failures
 
 Preserve `logs/install.log` and rerun the downloaded installer with the same prefix

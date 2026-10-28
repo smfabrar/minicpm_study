@@ -181,7 +181,8 @@ def test_invalid_native_call_delivers_failure_guidance_and_preserves_error(tmp_p
     assert "<tool_call>" not in contexts[0]["response_text"]
 
 
-def test_qwen_pipeline_retains_generic_provenance_and_native_ack(tmp_path):
+@pytest.mark.parametrize("quantization", ["none", "nf4"])
+def test_qwen_pipeline_retains_generic_provenance_and_native_ack(tmp_path, quantization):
     from tool_pipeline.models.qwen import QwenCaller
 
     def qwen_fixture(settings, registry, trace):
@@ -189,6 +190,7 @@ def test_qwen_pipeline_retains_generic_provenance_and_native_ack(tmp_path):
         caller.registry = registry
         caller.trace = trace
         caller.model_revision = 'qwen-fixture-sha'
+        caller.loading_provenance = {'quantization': quantization, 'compute_dtype': 'float16'}
         caller.gpu_pairs = []
         caller.generate = lambda messages, schemas: (
             '<tool_call>{"name":"room_lookup","arguments":{"name":"robotics seminar"}}</tool_call><|im_end|>'
@@ -197,7 +199,7 @@ def test_qwen_pipeline_retains_generic_provenance_and_native_ack(tmp_path):
 
     pipeline = make_pipeline(tmp_path, caller=qwen_fixture)
     pipeline.request = replace(pipeline.request, settings=replace(
-        pipeline.request.settings, caller_backend='qwen3', caller_device='cuda:0'
+        pipeline.request.settings, caller_backend='qwen3', caller_device='cuda:0', caller_quantization=quantization
     ))
     result = asyncio.run(pipeline.run())
     assert result['status'] == 'complete'
@@ -208,6 +210,8 @@ def test_qwen_pipeline_retains_generic_provenance_and_native_ack(tmp_path):
     assert provenance['caller_model'] == 'Qwen/Qwen3-1.7B'
     assert provenance['caller_resolved_revision'] == 'qwen-fixture-sha'
     assert provenance['caller_enable_thinking'] is False
+    assert provenance['caller_loading']['quantization'] == quantization
+    assert provenance['settings']['caller_quantization'] == quantization
     assert provenance['granite_resolved_revision'] is None
 
 

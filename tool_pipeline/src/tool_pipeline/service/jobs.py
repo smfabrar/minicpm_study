@@ -33,7 +33,7 @@ class JobManager:
 
     def health(self):
         dependencies = (
-            "kokoro", "torch", "transformers", "faster_whisper", "websockets", "psutil", "pynvml"
+            "kokoro", "torch", "transformers", "bitsandbytes", "faster_whisper", "websockets", "psutil", "pynvml"
         )
         return {
             "status": "ready",

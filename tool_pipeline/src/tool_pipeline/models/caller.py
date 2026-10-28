@@ -32,6 +32,27 @@ class NativeToolCaller:
                     "Caller dependencies missing. Install tool-pipeline[models] on the GPU server."
                 ) from exc
             self.torch = torch
+            load_options = {}
+            if config.quantization == "nf4":
+                try:
+                    import bitsandbytes
+                    from transformers import BitsAndBytesConfig
+                except ImportError as exc:
+                    raise RuntimeError(
+                        "NF4 requires bitsandbytes. Update the GPU installation to install "
+                        "tool-pipeline[models]; no precision fallback was applied."
+                    ) from exc
+                load_options = {
+                    "quantization_config": BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_quant_type="nf4",
+                        bnb_4bit_use_double_quant=True,
+                        bnb_4bit_compute_dtype=torch.float16,
+                    ),
+                    "device_map": {"": config.device},
+                    "torch_dtype": torch.float16,
+                    "low_cpu_mem_usage": True,
+                }
             source = config.model
             if not Path(source).is_dir():
                 with trace.span(f"{self.family}.resolve_snapshot", revision=config.revision):
@@ -43,14 +64,32 @@ class NativeToolCaller:
             self.model_revision = Path(source).name
             with trace.span(f"{self.family}.load_tokenizer"):
                 self.tokenizer = AutoTokenizer.from_pretrained(source, local_files_only=True)
-            with trace.span(f"{self.family}.load_weights"):
-                self.model = AutoModelForCausalLM.from_pretrained(source, local_files_only=True)
-            with trace.span(f"{self.family}.model_transfer", device=config.device):
-                if config.device.startswith("cuda"):
-                    self.model = self.model.to(device=config.device, dtype=torch.float16)
-                else:
-                    self.model = self.model.to(config.device)
-                self.model.eval()
+            with trace.span(
+                f"{self.family}.load_weights", quantization=config.quantization,
+                device=config.device, includes_device_dispatch=bool(load_options),
+            ):
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    source, local_files_only=True, **load_options
+                )
+                if load_options and not getattr(self.model, "is_loaded_in_4bit", False):
+                    raise RuntimeError("NF4 was requested but the model was not loaded in 4-bit")
+            if not load_options:
+                with trace.span(f"{self.family}.model_transfer", device=config.device):
+                    if config.device.startswith("cuda"):
+                        self.model = self.model.to(device=config.device, dtype=torch.float16)
+                    else:
+                        self.model = self.model.to(config.device)
+            self.model.eval()
+            self.loading_provenance = {
+                "quantization": config.quantization,
+                "weight_format": "nf4" if load_options else str(self.model.dtype),
+                "compute_dtype": "float16" if config.device.startswith("cuda") else "float32",
+                "double_quantization": bool(load_options),
+                "device": str(self.model.device),
+                "bitsandbytes_version": bitsandbytes.__version__ if load_options else None,
+                "model_memory_footprint_bytes": self.model.get_memory_footprint(),
+            }
+            trace.event("caller.loaded", **self.loading_provenance)
 
     def _operation(self, name, operation):
         with self.trace.span(name) as span:

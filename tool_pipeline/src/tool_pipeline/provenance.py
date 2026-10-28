@@ -5,7 +5,7 @@ import os
 
 def software_versions() -> dict[str, str | None]:
     result = {}
-    for package in ('tool-pipeline', 'speech-contracts', 'torch', 'transformers', 'faster-whisper', 'ctranslate2', 'av', 'kokoro', 'numpy', 'websockets', 'psutil', 'nvidia-ml-py'):
+    for package in ('tool-pipeline', 'speech-contracts', 'torch', 'transformers', 'bitsandbytes', 'accelerate', 'faster-whisper', 'ctranslate2', 'av', 'kokoro', 'numpy', 'websockets', 'psutil', 'nvidia-ml-py'):
         try:
             result[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:

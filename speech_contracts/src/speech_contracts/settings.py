@@ -8,6 +8,7 @@ class CallerConfig:
     model: str
     revision: str
     device: str
+    quantization: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +27,7 @@ class RunSettings:
     caller_model: str = ""
     caller_revision: str = ""
     caller_device: str = ""
+    caller_quantization: str = "none"
     whisper_model: str = "tiny"
     whisper_device: str = "cuda"
     whisper_device_index: int = 1
@@ -64,6 +66,12 @@ class RunSettings:
             raise ValueError("Caller model and revision must not be blank")
         if not re.fullmatch(r"cpu|cuda(?::[0-9]+)?", self.caller.device):
             raise ValueError("Caller device must be cpu, cuda or cuda:<index>")
+        if self.caller_quantization not in {"none", "nf4"}:
+            raise ValueError("Caller quantization must be none or nf4")
+        if self.caller_quantization == "nf4" and (
+            self.caller_backend != "qwen3" or not self.caller.device.startswith("cuda")
+        ):
+            raise ValueError("NF4 quantization requires the qwen3 caller on a CUDA device")
         if self.whisper_device not in {"cpu", "cuda", "auto"}:
             raise ValueError("Whisper device must be cpu, cuda or auto")
         if not re.fullmatch(r"cpu|cuda(?::[0-9]+)?", self.tts_device):
@@ -87,4 +95,5 @@ class RunSettings:
             model=self.caller_model or (self.granite_model if granite else "Qwen/Qwen3-1.7B"),
             revision=self.caller_revision or (self.granite_revision if granite else "main"),
             device=self.caller_device or self.granite_device,
+            quantization=self.caller_quantization,
         )

@@ -83,6 +83,25 @@ No additional model server or agent framework is needed.
 - [ ] Validate actual model quality, combined GPU memory use and latency on
   the remote GPU machine.
 
+## Qwen 4-bit loading (2026-10-28)
+
+Use bitsandbytes NF4 with double quantization and FP16 computation. Add
+`caller_quantization: "none" | "nf4"`, defaulting to `none` so existing frozen
+requests preserve their precision. NF4 requires Qwen and a CUDA caller device.
+Load through Transformers with an explicit single-device map; never load a
+full FP16 GPU copy first or silently fall back to another precision/device.
+
+- [x] Add contract validation, a Settings precision selector, and persistence
+  coverage through frozen requests.
+- [x] Implement quantized loading and retain actual loading configuration,
+  model footprint and bitsandbytes version in runtime evidence.
+- [x] Include a constrained bitsandbytes dependency in GPU installation/update
+  and document activation and memory limits in existing guides.
+- [x] Run CPU contract/loader/lifecycle/frontend checks.
+- [ ] Validate actual GPU memory, inference and quality remotely; no 12 GB fit
+  guarantee is implied. Local production frontend build still requires npm and
+  dependencies that are unavailable in this environment.
+
 ## Deferred tasks
 
 - [ ] **Low priority — reuse Kokoro across preparation jobs.** Deferred at the

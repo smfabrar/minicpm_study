@@ -150,7 +150,8 @@ Equivalent request settings:
   "caller_backend": "qwen3",
   "caller_model": "Qwen/Qwen3-1.7B",
   "caller_revision": "main",
-  "caller_device": "cuda:0"
+  "caller_device": "cuda:0",
+  "caller_quantization": "none"
 }
 ```
 
@@ -186,6 +187,46 @@ the model/revision default to `Qwen/Qwen3-1.7B`/`main`, and an empty caller devi
 inherits the old device. Explicit `caller_*` values take precedence. Switching
 the selector restores the chosen backend's default model/revision and keeps the
 device; edit custom paths or revisions afterward.
+
+### Qwen on a GPU with limited free memory
+
+In **Settings → Caller weight precision**, select **4-bit NF4 · CUDA required**
+after choosing Qwen. Set the caller device to `cuda:0` and save. Equivalent JSON:
+
+```json
+{
+  "caller_backend": "qwen3",
+  "caller_model": "Qwen/Qwen3-1.7B",
+  "caller_device": "cuda:0",
+  "caller_quantization": "nf4"
+}
+```
+
+NF4 uses bitsandbytes 0.48.2, double quantization and FP16 computation. The
+installer/update installs the pinned dependency in the runtime venv. Transformers
+quantizes and dispatches the model to the explicitly selected GPU during loading;
+the runtime does not first transfer a full FP16 model or use automatic CPU
+offloading. Missing dependencies, a non-CUDA device or an unquantized result
+produce an error rather than a silent precision fallback. Thinking stays disabled.
+See the [Transformers quantization guide](https://huggingface.co/docs/transformers/v4.57.1/quantization/bitsandbytes)
+and [bitsandbytes 0.48.2 requirements](https://huggingface.co/docs/bitsandbytes/v0.48.2/installation).
+
+The default `none` preserves existing requests: GPU callers use FP16 and CPU
+callers use FP32. Clone frozen studies to select NF4; switching back to Granite
+resets quantization to `none`. Prepared case audio can be reused. Quantized runs
+are a distinct configuration when comparing tool accuracy and latency.
+
+`provenance.caller_loading` and the `caller.loaded` event retain the loading
+format, compute dtype, double-quantization flag, actual device, bitsandbytes
+version and model-reported memory footprint. Package provenance also includes
+bitsandbytes and Accelerate. For NF4, `qwen3.load_weights` includes quantization
+and device dispatch; there is no separate `qwen3.model_transfer` step.
+
+Model footprint is not total GPU usage: embeddings, activations, KV cache,
+Whisper, CUDA allocations and the separate MiniCPM server also consume VRAM.
+With MiniCPM already occupying over 10 GB, a 12 GB GPU remains tight even with
+NF4. Run a single B1 case first and inspect memory telemetry; fitting this whole
+stack and its latency still require measurement on the GPU server.
 
 Response guidance uses the existing native context extension. A successful ACK confirms delivery, not that MiniCPM spoke the requested text or waited for it before answering. Those behaviors still need GPU/audio validation.
 

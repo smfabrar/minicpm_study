@@ -59,7 +59,10 @@ class InferencePipeline:
                 await self._finalize()
 
         revision = self.caller.model_revision if self.caller else None
-        result = build_result(self.request, self.state, self.native, sampler.report(), revision)
+        loading = getattr(self.caller, "loading_provenance", None)
+        result = build_result(
+            self.request, self.state, self.native, sampler.report(), revision, loading
+        )
         save_result(self.output_dir, result, self.trace)
         return result
 

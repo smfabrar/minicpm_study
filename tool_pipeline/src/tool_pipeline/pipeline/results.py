@@ -38,6 +38,7 @@ def build_result(
     native,
     memory: dict,
     caller_revision: str | None,
+    caller_loading: dict | None = None,
 ) -> dict:
     missing_acks = sorted(set(native.submitted.values()) - native.acknowledged) if native else []
     if missing_acks:
@@ -77,6 +78,7 @@ def build_result(
             "caller_model": request.settings.caller.model if caller_revision else None,
             "caller_resolved_revision": caller_revision,
             "caller_calling_mode": "native" if caller_revision else None,
+            "caller_loading": caller_loading,
             "caller_enable_thinking": (
                 False if caller_revision and request.settings.caller.backend == "qwen3" else None
             ),
