@@ -13,6 +13,18 @@ from urllib.request import Request, urlopen
 import psutil
 
 
+def inherit_container_settings(environ_path: Path = Path('/proc/1/environ')) -> None:
+    """Recover Docker settings omitted by SSH; explicit shell exports take priority."""
+    try:
+        entries = environ_path.read_bytes().split(b'\0')
+    except OSError:
+        return  # Normal on non-container hosts or when process environments are restricted.
+    for entry in entries:
+        name, separator, value = os.fsdecode(entry).partition('=')
+        if separator and (name.startswith('SPEECH_') or name in {'EXA_API_KEY', 'HF_TOKEN', 'CUDA_VISIBLE_DEVICES'}):
+            os.environ.setdefault(name, value)
+
+
 class Services:
     names = ("native", "runtime", "study")
 
@@ -180,6 +192,7 @@ def main():
     args = parser.parse_args()
     if not args.root.is_dir():
         parser.error(f"Installation does not exist: {args.root}")
+    inherit_container_settings()
     services = Services(args.root)
     services.logs.mkdir(exist_ok=True)
     try:

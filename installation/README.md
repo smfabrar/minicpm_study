@@ -227,7 +227,11 @@ If local port 8080 is busy, use `8081:127.0.0.1:8765` and open local port 8081.
 
 For a fresh Vast instance, supply application configuration in the template's
 Docker Options / Environment Variables before starting it. The On-start script
-and services inherit those variables:
+and services inherit those variables. Service commands run later from SSH recover
+missing project settings from the container's initial process environment
+(`/proc/1/environ`), when readable. This covers `SPEECH_*`, `EXA_API_KEY`,
+`HF_TOKEN`, and `CUDA_VISIBLE_DEVICES`; it does not copy unrelated variables or
+write credentials to disk. Explicit exports in the SSH shell take priority:
 
 ```text
 SPEECH_STUDY_REF=main
@@ -375,6 +379,15 @@ after correcting the reported cause. Failed setup does not proceed to startup.
 A startup failure preserves service logs; components started earlier may remain
 running. Use `status.sh`, fix the error, then `start.sh` or `restart.sh` as appropriate.
 A manifest left by an older installation does not prove an update completed.
+
+If `/api/health` reports `local-sqlite` despite Atlas variables supplied through
+Vast, and the service was started from SSH, update the checkout to include the
+container-environment recovery above, then restart the study service. Check for
+`mongodb-atlas-gridfs` afterward. An Atlas connection error should be resolved
+before collecting data; changing storage mode does not migrate existing SQLite
+records automatically. For direct access, `SPEECH_STUDY_HOST=0.0.0.0` must also
+reach the study launcher. The runtime needs restarting separately to recover its
+Exa key if it was started without it.
 
 | Symptom | Check |
 | --- | --- |

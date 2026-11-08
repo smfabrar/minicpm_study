@@ -25,6 +25,65 @@ else:
     sys.modules["psutil"] = previous
 
 
+def test_container_settings_are_recovered_without_evaluating_or_printing_secrets(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(services.os, 'environ', dict(os.environ))
+    uri = 'mongodb+srv://fixture:private=token@cluster.invalid/?a=1&b=2'
+    settings = {
+        'SPEECH_MONGODB_URI': uri, 'SPEECH_MONGODB_DATABASE': 'fixture_study',
+        'SPEECH_STUDY_HOST': '0.0.0.0', 'SPEECH_STUDY_PORT': '8765',
+        'SPEECH_RUNTIME_TOKEN': 'private-runtime-token', 'EXA_API_KEY': 'private-exa-key',
+        'HF_TOKEN': 'private-hf-token', 'CUDA_VISIBLE_DEVICES': '0',
+    }
+    for name in settings:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv('UNRELATED_SECRET', raising=False)
+    environment = tmp_path / 'container-environ'
+    environment.write_bytes(b'\0'.join(f'{name}={value}'.encode() for name, value in settings.items())
+                            + b'\0UNRELATED_SECRET=ignore-me\0PATH=/do-not-copy\0invalid-entry\0')
+    original_path = os.environ.get('PATH')
+    services.inherit_container_settings(environment)
+    assert all(os.environ[name] == value for name, value in settings.items())
+    assert 'UNRELATED_SECRET' not in os.environ
+    assert os.environ.get('PATH') == original_path
+    assert capsys.readouterr().out == ''
+
+
+def test_explicit_shell_settings_override_container_settings(tmp_path, monkeypatch):
+    monkeypatch.setenv('SPEECH_STUDY_HOST', '127.0.0.1')
+    monkeypatch.setenv('EXA_API_KEY', 'explicit-shell-key')
+    environment = tmp_path / 'container-environ'
+    environment.write_bytes(b'SPEECH_STUDY_HOST=0.0.0.0\0EXA_API_KEY=container-key\0')
+    services.inherit_container_settings(environment)
+    assert os.environ['SPEECH_STUDY_HOST'] == '127.0.0.1'
+    assert os.environ['EXA_API_KEY'] == 'explicit-shell-key'
+
+
+def test_missing_container_environment_is_supported_on_regular_hosts(tmp_path):
+    services.inherit_container_settings(tmp_path / 'absent')
+
+
+def test_service_commands_recover_settings_before_selecting_port_and_launching(tmp_path, monkeypatch):
+    monkeypatch.setattr(services.os, 'environ', dict(os.environ))
+    monkeypatch.delenv('SPEECH_STUDY_PORT', raising=False)
+    monkeypatch.delenv('SPEECH_MONGODB_URI', raising=False)
+    environment = tmp_path / 'container-environ'
+    environment.write_bytes(b'SPEECH_STUDY_PORT=8080\0SPEECH_MONGODB_URI=mongodb://fixture.invalid\0')
+    inherit = services.inherit_container_settings
+    monkeypatch.setattr(services, 'inherit_container_settings', lambda: inherit(environment))
+    monkeypatch.setattr(sys, 'argv', ['services.py', 'restart', '--root', str(tmp_path), '--service', 'study'])
+    observed = {}
+
+    def run(manager, action, selected):
+        observed.update(port=manager.study_port, uri=os.environ.get('SPEECH_MONGODB_URI'),
+                        action=action, selected=selected)
+        return 0
+
+    monkeypatch.setattr(services.Services, 'run', run)
+    assert services.main() == 0
+    assert observed == {'port': 8080, 'uri': 'mongodb://fixture.invalid',
+                        'action': 'restart', 'selected': 'study'}
+
+
 def test_stop_targets_selected_installation_and_descendants(tmp_path, monkeypatch):
     root = tmp_path / "runtime with spaces"
     calls = []
