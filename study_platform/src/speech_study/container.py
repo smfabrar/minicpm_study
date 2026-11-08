@@ -17,6 +17,8 @@ from .services.runs import RunService
 from .services.studies import StudyService
 from .services.tool_library import ToolLibraryService
 from .services.operations import OperationService
+from .services.input_imports import InputImportService
+from .infrastructure.input_imports import InputImportRepository
 
 
 class ConnectionSettings:
@@ -51,6 +53,7 @@ class ApplicationServices:
     library: ToolLibraryService
     operation_details: OperationService
     exports: ExportService
+    input_imports: InputImportService
 
     @classmethod
     def create(cls, root: Path):
@@ -62,17 +65,19 @@ class ApplicationServices:
             database = MongoDatabase(uri, os.environ.get("SPEECH_MONGODB_DATABASE", "minicpm_study"))
             artifacts = GridFSArtifactStore(root / "artifacts", database.db)
             operation_store = GridFSArtifactStore(root / "operations", database.db, "operations")
-            operation_store.resolve(".")  # Recover operation history on a fresh machine.
+            operation_store.recover_cache()  # Atlas owns history, including deletions on another machine.
         else:
             database = Database(root / "studies.sqlite")
             artifacts = ArtifactStore(root / "artifacts")
             operation_store = ArtifactStore(root / "operations")
         operations = BackgroundQueue(root / "operations", store=operation_store)
         connection = ConnectionSettings(root / "connection.json")
-        studies = StudyService(database, artifacts, operations)
+        import_repository = InputImportRepository(root / 'imports')
+        studies = StudyService(database, artifacts, operations, input_imports=import_repository)
         runs = RunService(database, artifacts, operations, connection.get)
         preparation = PreparationService(studies, runs, artifacts, operations, connection.get)
         analysis = AnalysisService(studies, artifacts)
         return cls(studies, runs, preparation, analysis, operations, connection, artifacts,
                    ToolLibraryService(database, studies), OperationService(operations, connection.get, artifacts),
-                   ExportService(studies, analysis, artifacts, operations))
+                   ExportService(studies, analysis, artifacts, operations),
+                   InputImportService(studies, operations, import_repository))

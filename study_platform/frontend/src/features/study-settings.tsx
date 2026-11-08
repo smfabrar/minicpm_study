@@ -10,12 +10,14 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FieldGroup } from '@/components/ui/field';
 import { ErrorNotice, FormField } from '@/components/shared';
+import { CallerProfiles } from './caller-profiles';
 
 export function StudySettings({ study }: { study: Study }) {
   const [settings, setSettings] = useState(JSON.stringify(study.settings, null, 2));
   const [name, setName] = useState(study.name);
   const [description, setDescription] = useState(study.description);
   const [saved, setSaved] = useState(false);
+  const [profiles, setProfiles] = useState(study.caller_profiles ?? []);
   const action = useAction();
   const disabled = study.status === 'frozen' || action.isPending;
   const parsedSettings = useMemo(() => {
@@ -42,9 +44,12 @@ export function StudySettings({ study }: { study: Study }) {
     setSaved(false);
     action.mutate(async () => {
       const submitted = parseStudySettings(settings);
-      await api.request<Study>(`/studies/${study.id}`, 'PUT', { name, description, settings: submitted });
+      await api.request<Study>(`/studies/${study.id}`, 'PUT', { name, description, settings: submitted, caller_profiles: profiles });
       const persisted = await api.study(study.id);
       verifySavedSettings(submitted, persisted.settings);
+      if (JSON.stringify(persisted.caller_profiles) !== JSON.stringify(profiles)) {
+        throw new Error('Caller profiles were not saved. Reload the study before trying again.');
+      }
       if (persisted.name !== name || persisted.description !== description) {
         throw new Error('Study details were not saved. Reload the study before trying again.');
       }
@@ -99,7 +104,8 @@ export function StudySettings({ study }: { study: Study }) {
               }} />
           </FormField>
           <p className="text-sm text-muted-foreground">For a timing comparison, clone the same prepared case and run B2 with 0 ms and 4000 ms, using each wording. The oracle fact comes from the case’s B2 reference result.</p>
-          <FormField label="Tool-calling model (B1)">
+          <CallerProfiles profiles={profiles} settings={parsedSettings ?? {}} disabled={disabled || !parsedSettings} onChange={value => { setProfiles(value); markEdited(); }} />
+          {profiles.length === 0 && <><FormField label="Tool-calling model (B1)">
             <Select disabled={disabled || !parsedSettings} value={caller.backend}
               onValueChange={value => {
                 if (parsedSettings) changeSettings(JSON.stringify(selectCaller(parsedSettings, value as CallerBackend), null, 2));
@@ -139,6 +145,7 @@ export function StudySettings({ study }: { study: Study }) {
             <p className="text-sm text-muted-foreground">
               Its original weights download on the pipeline server at first use; allow time and disk space for the download.
             </p>
+          </>}
           </>}
           <div className="flex flex-wrap items-center gap-3">
             {study.status === 'draft' && <Button type="submit" disabled={action.isPending}>

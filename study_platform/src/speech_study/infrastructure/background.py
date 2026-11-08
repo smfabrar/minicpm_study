@@ -140,10 +140,18 @@ class BackgroundQueue:
                 self._log(operation, operation.message, {"traceback": traceback.format_exc()})
             finally:
                 _current.reset(token)
-                operation.finished_at = utc_now()
-                self._save(operation)
-                self._log(operation, operation.message)
+                with self.lock:
+                    operation.finished_at = utc_now()
+                    self._save(operation)
+                    self._log(operation, operation.message)
                 self.queue.task_done()
 
     def close(self):
         self.stopped.set()
+
+    def delete(self, identifier):
+        if len(identifier) != 32 or any(c not in "0123456789abcdef" for c in identifier):
+            raise ValueError("Invalid operation identifier")
+        with self.lock:
+            self.store.delete(identifier + '.log')
+            self.store.delete(identifier + '.json')

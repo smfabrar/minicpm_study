@@ -1,4 +1,4 @@
-"""Produce B1 tool facts/response guidance or B2 saved oracle facts."""
+"""Produce B1 tool facts/response guidance or the configured B2 reference."""
 
 import asyncio
 import uuid
@@ -7,6 +7,7 @@ from pathlib import Path
 from speech_contracts import RunRequest
 
 from ..telemetry import TraceRecorder
+from ..live_tools import server_datetime_result
 from .results import RunState
 
 
@@ -46,17 +47,19 @@ async def resolve_tool(request: RunRequest, state: RunState, transcriber, caller
 
 
 async def resolve_oracle(request: RunRequest, state: RunState, trace: TraceRecorder):
-    if request.oracle_result is None:
+    if request.oracle_result is None and request.oracle_mode == "fixed":
         return None
 
     delay_ms = request.settings.oracle_delay_ms
     with trace.span("oracle.availability_delay", configured_ms=delay_ms, origin="input_end"):
         await asyncio.sleep(delay_ms / 1000)
 
-    state.tool_result = {
-        "event_id": uuid.uuid4().hex,
-        "facts": request.oracle_result,
-        "sources": ["study://frozen-oracle"],
-    }
+    if request.oracle_mode == "server_clock":
+        with trace.span("oracle.server_clock"):
+            reference = server_datetime_result()
+    else:
+        reference = {"facts": request.oracle_result, "sources": ["study://frozen-oracle"]}
+    state.tool_result = {"event_id": uuid.uuid4().hex, **reference}
+    trace.event("oracle.mode", mode=request.oracle_mode)
     trace.event("oracle.available", **state.tool_result)
     return state.tool_result

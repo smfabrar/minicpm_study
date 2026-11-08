@@ -300,7 +300,8 @@ class LaunchFiles:
                             f"if [[ -f {shlex.quote(str(config.root / 'study.env'))} ]]; then set -a; source {shlex.quote(str(config.root / 'study.env'))}; set +a; fi\n"
                             f"export SPEECH_STUDY_FRONTEND={shlex.quote(str(frontend))}\n"
                             'export SPEECH_RUNTIME_URL="${SPEECH_RUNTIME_URL:-http://127.0.0.1:8766}"\n'
-                            f'exec {study_command} --port "${{SPEECH_STUDY_PORT:-8765}}"\n')
+                            f'exec {study_command} --host "${{SPEECH_STUDY_HOST:-127.0.0.1}}" '
+                            '--port "${SPEECH_STUDY_PORT:-8765}"\n')
             path.chmod(0o755)
         if models is None:
             return
@@ -323,6 +324,9 @@ class LaunchFiles:
         config = self.config
         content = ("#!/usr/bin/env bash\nset -euo pipefail\n"
                    f"source {shlex.quote(str(config.root / 'activate.sh'))}\n")
+        if name == "start_runtime.sh":
+            env_path = shlex.quote(str(config.root / "runtime.env"))
+            content += f"if [[ -f {env_path} ]]; then set -a; source {env_path}; set +a; fi\n"
         if native:
             content += (f"logs={shlex.quote(str(config.root / 'logs'))}/native-$(date -u +%Y%m%dT%H%M%S)-$$\n")
         content += "exec " + shlex.join([str(argument) for argument in arguments])

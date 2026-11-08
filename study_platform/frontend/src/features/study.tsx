@@ -15,6 +15,7 @@ import { ErrorNotice, Status } from '@/components/shared';
 import { StudySettings } from './study-settings';
 import { Cases } from './cases';
 import { Tools } from './tools';
+import { InputImport } from './input-import';
 export function StudyPage() {
   const { id = '' } = useParams();
   const [deleting, setDeleting] = useState(false);
@@ -42,6 +43,8 @@ export function StudyPage() {
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
+        <InputImport study={study} />
+        <Button asChild variant="outline"><a href={`/api/studies/${id}/export/inputs`}><Download className="size-4" /> Export input dataset</a></Button>
         <Button asChild variant="outline"><a href={`/api/studies/${id}/export`}><Download className="size-4" /> Export ZIP</a></Button>
         <Button asChild variant="outline"><Link to={`/operations?study_id=${id}`}>Operations</Link></Button>
         <Button variant="outline" onClick={() => setDeleting(true)}>Delete study</Button>
@@ -50,7 +53,7 @@ export function StudyPage() {
       </div>
     </div>
     <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">B0 · Native speech <span className="mx-4">/</span> B1 · Whisper → caller → tools → native injection <span className="mx-4">/</span> B2 · Oracle → native injection</div>
-    <Dialog open={deleting} onOpenChange={setDeleting}><DialogContent><DialogHeader><DialogTitle>Move {study.name} to Trash?</DialogTitle><DialogDescription>Recordings, metadata and run history will be retained. Restore the study from the dashboard. Finish this study's queued work first.</DialogDescription></DialogHeader><div className="flex gap-2"><Button variant="outline" onClick={() => setDeleting(false)}>Cancel</Button><Button variant="destructive" disabled={action.isPending} onClick={() => action.mutate(async () => { await api.request(`/studies/${id}`, 'DELETE'); navigate('/'); })}>Move to Trash</Button></div></DialogContent></Dialog>
+    <Dialog open={deleting} onOpenChange={setDeleting}><DialogContent><DialogHeader><DialogTitle>Permanently delete {study.name}?</DialogTitle><DialogDescription>This permanently deletes the study, run history, reviews, logs and unshared recordings from Atlas and the local cache. Files used by another study remain until its last reference is deleted. This cannot be undone. Finish queued work first.</DialogDescription></DialogHeader><ErrorNotice error={action.error} /><div className="flex gap-2"><Button variant="outline" onClick={() => setDeleting(false)}>Cancel</Button><Button variant="destructive" disabled={action.isPending} onClick={() => action.mutate(async () => { await api.request(`/studies/${id}`, 'DELETE'); navigate('/'); })}>Delete permanently</Button></div></DialogContent></Dialog>
     <Tabs defaultValue="cases">
       <TabsList className="mb-5">
         <TabsTrigger value="cases">Cases ({study.cases.length})</TabsTrigger>
@@ -89,7 +92,7 @@ function Runs({ study }: {
       {study.runs.length ? <Table>
         <TableHeader>
           <TableRow>
-            {['Case', 'Condition', 'Status', 'Review', 'Started', ''].map(label => <TableHead key={label}>
+            {['Case', 'Condition', 'Caller set', 'Repetition', 'Status', 'Review', 'Started', ''].map(label => <TableHead key={label}>
               {label}
             </TableHead>)}
           </TableRow>
@@ -102,6 +105,8 @@ function Runs({ study }: {
             <TableCell>
               {run.condition}
             </TableCell>
+            <TableCell>{run.caller_profile?.model || 'Legacy caller'}</TableCell>
+            <TableCell>{run.repetition ?? 1}</TableCell>
             <TableCell>
               <Status value={run.status} />
             </TableCell>
@@ -129,6 +134,10 @@ function Analysis({ studyId }: {
   if (!query.data)
     return <ErrorNotice error={query.error} />;
   const report: AnalysisData = query.data;
+  const rows = report.callers.flatMap(group => group.conditions.map(row => ({ ...row,
+    caller: `${group.profile.model} @ ${group.profile.revision} · ${group.profile.quantization} · ${group.profile.device}`,
+    identity: JSON.stringify(group.profile),
+  })));
   return <div className="space-y-5">
     <div className="flex items-center justify-between">
       <p className="text-sm text-muted-foreground">{report.pending} queued or running · human-reviewed spoken correctness</p>
@@ -137,9 +146,9 @@ function Analysis({ studyId }: {
       </Button>
     </div>
     <div className="grid gap-4 md:grid-cols-3">
-      {report.conditions.map(row => <Card key={row.condition}>
+      {rows.map(row => <Card key={`${row.identity}-${row.condition}`}>
         <CardHeader>
-          <CardDescription>{row.condition} · spoken accuracy</CardDescription>
+          <CardDescription>{row.caller}<br />{row.condition} · spoken accuracy</CardDescription>
           <CardTitle className="text-3xl">
             {row.spoken_accuracy === null ? '—' : `${(row.spoken_accuracy * 100).toFixed(1)}%`}
           </CardTitle>
@@ -162,13 +171,14 @@ function Analysis({ studyId }: {
         <Table>
           <TableHeader>
             <TableRow>
-              {['Condition', 'Attempts', 'Median first audio', 'Peak process RSS', 'Unnecessary tool calls'].map(label => <TableHead key={label}>
+              {['Caller set', 'Condition', 'Attempts', 'Median first audio', 'Peak process RSS', 'Unnecessary tool calls'].map(label => <TableHead key={label}>
                 {label}
               </TableHead>)}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {report.conditions.map(row => <TableRow key={row.condition}>
+            {rows.map(row => <TableRow key={`${row.identity}-${row.condition}`}>
+              <TableCell>{row.caller}</TableCell>
               <TableCell>
                 {row.condition}
               </TableCell>

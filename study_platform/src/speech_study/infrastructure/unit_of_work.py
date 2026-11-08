@@ -14,8 +14,13 @@ class UnitOfWork:
         self.database = database
 
     def __enter__(self):
-        self.connection = self.database.connect()
-        self.connection.execute("BEGIN IMMEDIATE")
+        self.database.lock.acquire()
+        try:
+            self.connection = self.database.connect()
+            self.connection.execute("BEGIN IMMEDIATE")
+        except BaseException:
+            self.database.lock.release()
+            raise
         self.studies = StudyRepository(self.connection)
         self.cases = CaseRepository(self.connection)
         self.tools = ToolRepository(self.connection)
@@ -31,3 +36,4 @@ class UnitOfWork:
                 self.connection.commit()
         finally:
             self.connection.close()
+            self.database.lock.release()

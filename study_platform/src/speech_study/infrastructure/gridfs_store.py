@@ -5,6 +5,7 @@ import re
 import threading
 
 from gridfs import GridFSBucket
+from gridfs.errors import NoFile
 from ..artifacts import ArtifactStore
 
 
@@ -62,3 +63,31 @@ class GridFSArtifactStore(ArtifactStore):
     def sync(self, relative):
         # Local producers (WAV normalization and logs) explicitly publish their result.
         return self.write(relative, super().resolve(relative).read_bytes())
+
+    def recover_cache(self):
+        """Restore cloud-owned history at startup; discard stale local copies."""
+        with self.lock:
+            entries = list(self.index.find({}))
+            current = {entry['_id'] for entry in entries}
+            for path in self.root.rglob('*'):
+                if path.is_file():
+                    relative = path.relative_to(self.root).as_posix()
+                    if relative not in current:
+                        self.cache.delete(relative)
+            for entry in entries:
+                self._download(entry)
+
+    def delete(self, relative):
+        path = ArtifactStore.resolve(self, relative)
+        if path == self.root:
+            raise ValueError("Cannot delete the storage root")
+        key = path.relative_to(self.root).as_posix()
+        pattern = '^' + re.escape(key) + r'(?:/|$)'
+        with self.lock:
+            for entry in self.index.find({'_id': {'$regex': pattern}}):
+                try:
+                    self.bucket.delete(entry['file_id'])
+                except NoFile:
+                    pass  # A previous interrupted deletion already removed the file.
+                self.index.delete_one({'_id': entry['_id']})
+            super().delete(relative)

@@ -25,7 +25,15 @@ def main(request_path: Path, result_path: Path) -> int:
             raise ValueError("sources must be a list of strings")
         if len(result["facts"]) > 32000 or len(sources) > 100:
             raise ValueError("Tool result exceeds 32000 fact characters or 100 sources")
-        result_path.write_text(json.dumps({"facts": result["facts"], "sources": sources}, allow_nan=False))
+        saved = {"facts": result["facts"], "sources": sources}
+        if "evidence" in result:
+            if not isinstance(result["evidence"], dict):
+                raise ValueError("evidence must be a JSON object")
+            saved["evidence"] = result["evidence"]
+        serialized = json.dumps(saved, allow_nan=False)
+        if len(serialized.encode()) > 1024 * 1024:
+            raise ValueError("Tool result exceeds 1 MiB")
+        result_path.write_text(serialized)
         return 0
     except Exception as exc:
         traceback.print_exc()

@@ -1,8 +1,8 @@
-import type { Settings } from './types';
+import type { Settings, CallerProfile } from './types';
 
 export type CallerBackend = 'granite' | 'qwen3';
 
-export function callerSettings(settings: Settings) {
+export function callerSettings(settings: Settings): CallerProfile {
   const backend = settings.caller_backend === 'qwen3' ? 'qwen3' : 'granite';
   return {
     backend,
@@ -12,6 +12,12 @@ export function callerSettings(settings: Settings) {
     device: String(settings.caller_device || settings.granite_device || 'cuda:0'),
     quantization: String(settings.caller_quantization || 'none'),
   };
+}
+
+export function comparisonProfiles(settings: Settings): CallerProfile[] {
+  const selected = callerSettings(settings);
+  const other = selected.backend === 'granite' ? 'qwen3' : 'granite';
+  return [selected, callerSettings(selectCaller(settings, other))];
 }
 
 export function selectCaller(settings: Settings, backend: CallerBackend): Settings {

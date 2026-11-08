@@ -1,9 +1,11 @@
 import sqlite3
+import threading
 from pathlib import Path
 
 
 class Database:
     def __init__(self, path: Path):
+        self.lock = threading.RLock()
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:

@@ -27,12 +27,12 @@ export function ToolEditor({ initial, save }: { initial: ToolPayload; save: (too
       <FieldGroup>
         <FormField label="Function name"><Input required pattern="[A-Za-z][A-Za-z0-9_]{0,63}" value={tool.name} onChange={e => setTool({ ...tool, name: e.target.value })} /></FormField>
         <FormField label="Description shown to the tool caller"><Textarea required value={tool.description} onChange={e => setTool({ ...tool, description: e.target.value })} /></FormField>
-        <FormField label="Implementation"><Choice value={tool.kind} options={['fixture', 'room', 'document', 'calculator', 'python']} onChange={kind => setTool({ ...tool, kind })} /></FormField>
+        <FormField label="Implementation"><Choice value={tool.kind} options={['fixture', 'room', 'document', 'python', ...(tool.kind === 'calculator' ? ['calculator'] : [])]} onChange={kind => setTool({ ...tool, kind })} /></FormField>
         {python ? <>
           <FormField label="Parameters (JSON Schema)"><Textarea className="min-h-40 font-mono text-xs" value={parameters} onChange={e => setParameters(e.target.value)} /></FormField>
           <p className="text-xs text-muted-foreground">Use an object with empty properties and required lists for a tool with no arguments. Supports objects, arrays, strings, numbers, integers, booleans, null, enum, const, bounds and patterns.</p>
           <FormField label="Python function"><Textarea required spellCheck={false} className="min-h-72 font-mono text-xs" value={tool.python_code ?? ''} onChange={e => setTool({ ...tool, python_code: e.target.value })} /></FormField>
-          <p className="text-xs text-muted-foreground">Define execute(arguments). Return text or {'{ "facts": "…", "sources": ["…"] }'}. Runs on the runtime server with its Python packages and account access. Source is copied into each run; stdout and errors are logged.</p>
+          <p className="text-xs text-muted-foreground">Define execute(arguments). Return text or {'{ "facts": "…", "sources": ["…"], "evidence": {} }'}. Evidence is saved for review and is not injected. Runs on the runtime server with its Python packages and account access. Source is copied into each run; stdout and errors are logged.</p>
           <FormField label="Execution timeout (seconds)"><Input type="number" min="0.1" max="120" step="0.1" value={tool.timeout_seconds ?? 10} onChange={e => setTool({ ...tool, timeout_seconds: Number(e.target.value) })} /></FormField>
         </> : <>
           <FormField label="Required string parameter"><Input required value={tool.parameter} onChange={e => setTool({ ...tool, parameter: e.target.value })} /></FormField>

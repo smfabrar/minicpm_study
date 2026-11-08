@@ -23,7 +23,7 @@ def platform(tmp_path):
     app = create_app(tmp_path)
     client = TestClient(app)
     services = app.state.services
-    study = client.post('/api/studies', json={'name': 'Time experiment'}).json()
+    study = client.post('/api/studies', json={'name': 'Time experiment', 'caller_profiles': []}).json()
     yield client, services, '/api/studies/' + study['id']
     services.operations.close()
 
@@ -72,18 +72,19 @@ def test_library_validation_and_persistence(platform, tmp_path):
     assert restarted.get(base).status_code == 200
 
 
-def test_trash_keeps_shared_recordings_and_can_restore_after_restart(platform, tmp_path):
+def test_permanent_delete_preserves_shared_audio_until_last_clone_is_deleted(platform, tmp_path):
     client, services, base = platform
     case = prepared_case(client, base)
     clone = client.post(base + '/clone').json()
     assert client.delete(base).status_code == 204
     assert client.get(base).status_code == 404
     assert [s['id'] for s in client.get('/api/studies').json()] == [clone['id']]
-    assert client.get('/api/studies?deleted=true').json()[0]['id'] == base.rsplit('/', 1)[1]
+    assert client.get('/api/studies?deleted=true').json() == []
     assert services.artifacts.resolve(case['audio_path']).is_file()
     restarted = TestClient(create_app(tmp_path))
-    assert restarted.post(base + '/restore').status_code == 200
-    assert restarted.get(base).json()['cases'][0]['audio_sha256'] == case['audio_sha256']
+    assert restarted.post(base + '/restore').status_code == 404
+    assert restarted.delete('/api/studies/' + clone['id']).status_code == 204
+    assert not services.artifacts.resolve(case['audio_path']).exists()
 
 
 @pytest.mark.parametrize('kind', ['synthesis', 'transcription'])

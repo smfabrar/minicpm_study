@@ -6,6 +6,7 @@ from ..artifacts import ArtifactStore
 from .studies import StudyService
 
 from ..domain.models import Condition, RunStatus, StudyStatus
+from .callers import run_caller
 
 
 class AnalysisService:
@@ -17,9 +18,29 @@ class AnalysisService:
         return self.summarize_details(self.studies.get(study_id))
 
     def summarize_details(self, details) -> dict:
+        groups = {}
+        for profile in details.study.caller_profiles:
+            groups[tuple(sorted(profile.items()))] = (profile, [])
+        for run in details.runs:
+            profile = run_caller(run)
+            key = tuple(sorted(profile.items()))
+            groups.setdefault(key, (profile, []))[1].append(run)
+        report = self._conditions(details, details.runs)
+        return {"conditions": report,
+                "callers": [{"profile": profile, "conditions": self._conditions(details, runs)}
+                            for profile, runs in groups.values()],
+                "pending": sum(r.status in {RunStatus.QUEUED, RunStatus.RUNNING} for r in details.runs),
+                "notes": ["Compare caller groups separately; model, revision, device and precision identify each group.",
+                          "B0 and B2 are repeated controls in each comparison set; only B1 uses that set's caller.",
+                          "Primary accuracy uses frozen evaluation-split tool-required attempts, including failed, silent and unreviewed attempts.",
+                          "A human listening verdict supplies spoken correctness. ASR and model text assist review.",
+                          "Latency and memory summaries use frozen evaluation-split attempts only."]}
+
+    @staticmethod
+    def _conditions(details, runs):
         report = []
         for condition in Condition:
-            attempts = [r for r in details.runs if r.condition == condition and r.status not in {RunStatus.QUEUED, RunStatus.RUNNING}]
+            attempts = [r for r in runs if r.condition == condition and r.status not in {RunStatus.QUEUED, RunStatus.RUNNING}]
             evaluation = [r for r in attempts if r.study_status == StudyStatus.FROZEN and next((c for c in r.snapshot["cases"] if c["id"] == r.case_id), {}).get("split") == "evaluation"]
             primary = [r for r in evaluation if next((c for c in r.snapshot["cases"] if c["id"] == r.case_id), {}).get("category") != "none"]
             correct = sum(r.review is not None and r.review.verdict == "correct" and r.status == RunStatus.COMPLETE for r in primary)
@@ -36,5 +57,4 @@ class AnalysisService:
                            "median_first_audio_ms": statistics.median(latency) if latency else None,
                            "peak_observed_rss_bytes": max(memory) if memory else None,
                            "no_tool_attempts": len(no_tool), "unnecessary_calls": unnecessary})
-        return {"conditions": report, "pending": sum(r.status in {RunStatus.QUEUED, RunStatus.RUNNING} for r in details.runs),
-                "notes": ["Primary accuracy uses frozen evaluation-split tool-required attempts. Silent and failed attempts remain in its denominator.", "Unreviewed attempts are shown explicitly; accuracy is confirmed correct / attempted.", "ASR and model text assist review; a human listening verdict supplies spoken correctness.", "Latency and memory summaries use frozen evaluation-split attempts only.", "Synthesized and uploaded audio origins are retained per case. Timing comparisons require matching configurations."]}
+        return report

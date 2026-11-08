@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -35,3 +36,13 @@ class ArtifactStore:
 
     def checksum(self, relative: str) -> str:
         return hashlib.sha256(self.resolve(relative).read_bytes()).hexdigest()
+
+    def delete(self, relative: str) -> None:
+        # Use local resolution directly: cloud deletion must not download a cache.
+        path = ArtifactStore.resolve(self, relative)
+        if path == self.root:
+            raise ValueError("Cannot delete the storage root")
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink(missing_ok=True)

@@ -12,19 +12,22 @@ class StudyCreate(InputModel):
     name: str = Field(min_length=1, max_length=160)
     description: str = ""
     settings: RunSettings = Field(default_factory=RunSettings)
+    caller_profiles: list[dict[str, str]] | None = None
 
 
 class StudyUpdate(InputModel):
     name: str | None = Field(default=None, min_length=1, max_length=160)
     description: str | None = None
     settings: dict[str, str | int | float | bool] | None = None
+    caller_profiles: list[dict[str, str]] | None = None
 
 
 class CaseInput(InputModel):
     question: str = Field(min_length=1, max_length=4000)
-    category: Literal["room", "document", "calculator", "none", "custom"] = "none"
+    category: Literal["room", "document", "datetime", "web", "calculator", "none", "custom"] = "none"
     expected_answer: str = ""
     oracle_result: str = ""
+    oracle_mode: Literal["fixed", "server_clock"] = "fixed"
     expected_tool: str = ""
     expected_arguments: dict[str, object] = Field(default_factory=dict)
     split: Literal["development", "evaluation"] = "development"
@@ -64,3 +67,16 @@ class RuntimeInput(InputModel):
 
 class LibraryAttach(InputModel):
     library_id: str
+
+
+class InputImportSelection(InputModel):
+    number: str
+    case_id: str | None = None
+    text: Literal['existing', 'imported']
+    audio: Literal['existing', 'imported']
+    category: Literal['existing', 'imported']
+
+
+class InputImportApply(InputModel):
+    mode: Literal['append', 'replace']
+    selections: list[InputImportSelection] = Field(min_length=1, max_length=1000)

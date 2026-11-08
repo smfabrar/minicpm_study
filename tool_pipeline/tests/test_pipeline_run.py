@@ -123,6 +123,23 @@ def test_full_run_preserves_condition_results_and_artifacts(tmp_path, condition)
         assert len(pipeline.native.inputs) - injection - 1 >= 1
 
 
+def test_clock_b2_preserves_reference_evidence_without_initializing_caller(tmp_path):
+    def unexpected_model(*args):
+        raise AssertionError('B2 must not initialize speech recognition or the caller')
+
+    pipeline = make_pipeline(tmp_path, condition='B2', caller=unexpected_model)
+    pipeline.transcriber_factory = unexpected_model
+    pipeline.request = replace(pipeline.request, oracle_result=None, oracle_mode='server_clock')
+    result = asyncio.run(pipeline.run())
+    assert result['status'] == 'complete'
+    assert result['input_transcript'] == ''
+    assert result['caller_action'] is None
+    assert result['tool_result']['evidence']['implementation'] == 'server-clock-v1'
+    assert result['context_submitted'] == result['context_evaluated'] == 1
+    saved = json.loads((pipeline.output_dir / 'result.json').read_text())
+    assert saved['tool_result'] == result['tool_result']
+
+
 @pytest.mark.parametrize("kind", ["none", "clarify"])
 def test_legacy_non_call_fixture_finishes_without_injection(tmp_path, kind):
     class NoCall(CallerFixture):

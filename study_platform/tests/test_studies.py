@@ -31,7 +31,7 @@ class StudyIntegrationTests(unittest.TestCase):
         # Do not start background execution: these checks inspect persisted requests.
         self.client = TestClient(self.app)
         self.services = self.app.state.services
-        self.study = self.client.post('/api/studies', json={'name': 'Room experiment'}).json()
+        self.study = self.client.post('/api/studies', json={'name': 'Room experiment', 'caller_profiles': []}).json()
         self.base = '/api/studies/' + self.study['id']
 
     def case(self, category='room', split='evaluation'):
@@ -126,7 +126,83 @@ class StudyIntegrationTests(unittest.TestCase):
         self.assertEqual(len(detail['cases']), 1)
         self.assertNotEqual(detail['cases'][0]['id'], item['id'])
         self.assertEqual(detail['runs'], [])
-        self.assertEqual(len(detail['tools']), 3)
+        self.assertEqual(len(detail['tools']), 4)
+
+    def test_live_tool_templates_and_clock_condition_boundaries(self):
+        presets = self.client.get('/api/tools/presets')
+        self.assertEqual(presets.status_code, 200, presets.text)
+        definitions = {tool['name']: tool for tool in presets.json()}
+        self.assertEqual(set(definitions), {'room_lookup', 'document_search', 'server_datetime', 'web_search'})
+        self.assertEqual(definitions['server_datetime']['parameters']['required'], [])
+        self.assertEqual(definitions['document_search']['kind'], 'python')
+        self.assertEqual(definitions['document_search']['parameters']['required'], ['filename'])
+        self.assertIn('FILES = [', definitions['document_search']['python_code'])
+        item = self.client.post(self.base + '/cases', json={
+            'question': 'Read the server clock', 'category': 'datetime', 'split': 'evaluation',
+            'oracle_mode': 'server_clock', 'expected_tool': 'server_datetime',
+        }).json()
+        self.client.post(f"{self.base}/cases/{item['id']}/audio", files={'audio': ('input.wav', recording(), 'audio/wav')})
+        self.assertEqual(self.client.post(self.base + '/freeze').status_code, 200)
+        for run in self.start(item, ['B0', 'B1', 'B2']):
+            if run['condition'] == 'B2':
+                self.assertEqual(run['request']['oracle_mode'], 'server_clock')
+                self.assertIsNone(run['request']['oracle_result'])
+                self.assertEqual(run['request']['tools'], [])
+            else:
+                self.assertNotIn('oracle_mode', run['request'])
+                self.assertNotIn('oracle_result', run['request'])
+        clone = self.client.post(self.base + '/clone').json()
+        cloned = self.client.get('/api/studies/' + clone['id']).json()
+        self.assertEqual(cloned['cases'][0]['oracle_mode'], 'server_clock')
+
+    def test_revised_template_removes_math_and_requires_verified_web_oracles(self):
+        response = self.client.post(self.base + '/template')
+        self.assertEqual(response.status_code, 200, response.text)
+        cases = self.client.get(self.base).json()['cases']
+        self.assertEqual(len(cases), 48)
+        self.assertTrue(all(case['expected_answer'] == '' for case in cases))
+        document_cases = [case for case in cases if case['category'] == 'document']
+        self.assertEqual(len(document_cases), 12)
+        self.assertEqual({case['expected_arguments']['filename'] for case in document_cases},
+                         {'budget.xlsx', 'meeting-notes.txt', 'project-report.pdf'})
+        self.assertTrue(all(case['expected_arguments']['filename'] in case['question'] for case in document_cases))
+        self.assertTrue(all('Full path:' in case['oracle_result'] for case in document_cases))
+        self.assertFalse(any(case['category'] == 'calculator' for case in cases))
+        self.assertEqual(sum(case['oracle_mode'] == 'server_clock' for case in cases), 6)
+        web_cases = [case for case in cases if case['category'] == 'web']
+        self.assertEqual(len(web_cases), 6)
+        self.assertTrue(all(not case['oracle_result'] for case in web_cases))
+        for topic in ['prime minister', 'Python', 'Nobel Prize', 'Champions League', 'Academy Awards', 'Central Bank']:
+            self.assertTrue(any(topic in case['question'] for case in web_cases), topic)
+        self.assertEqual(self.client.post(self.base + '/cases', json={
+            'question': 'Who is the prime minister?', 'category': 'web', 'oracle_mode': 'server_clock',
+        }).status_code, 400)
+        other = self.client.post('/api/studies', json={'name': 'Web reference check'}).json()
+        base = '/api/studies/' + other['id']
+        case = self.client.post(base + '/cases', json={
+            'question': 'Who is the current prime minister of Sweden?', 'category': 'web', 'split': 'evaluation',
+        }).json()
+        self.client.post(f"{base}/cases/{case['id']}/audio", files={'audio': ('input.wav', recording(), 'audio/wav')})
+        response = self.client.post(base + '/freeze')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('B2 reference', response.json()['detail'])
+
+    def test_presets_attach_to_existing_drafts_without_replacing_legacy_tools(self):
+        legacy = self.client.post(self.base + '/tools', json={
+            'name': 'calculator', 'description': 'Legacy arithmetic', 'kind': 'calculator', 'parameter': 'expression',
+        })
+        self.assertEqual(legacy.status_code, 201, legacy.text)
+        tools = self.client.get(self.base).json()['tools']
+        clock = next(tool for tool in tools if tool['name'] == 'server_datetime')
+        self.client.delete(self.base + '/tools/' + clock['id'])
+        presets = self.client.get('/api/tools/presets').json()
+        clock_preset = next(tool for tool in presets if tool['name'] == 'server_datetime')
+        self.assertEqual(self.client.post(self.base + '/tools', json=clock_preset).status_code, 201)
+        clone = self.client.post(self.base + '/clone').json()
+        cloned = self.client.get('/api/studies/' + clone['id']).json()
+        self.assertEqual({tool['name'] for tool in cloned['tools']}, {
+            'room_lookup', 'document_search', 'calculator', 'server_datetime', 'web_search',
+        })
 
     def test_development_runs_do_not_enter_frozen_evaluation(self):
         development = self.prepared_case(split='development')

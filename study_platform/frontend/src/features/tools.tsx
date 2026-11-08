@@ -14,12 +14,13 @@ import { ToolEditor } from './tool-editor';
 export function Tools({ study }: { study: Study }) {
   const [editing, setEditing] = useState<(ToolPayload & { id?: string }) | null>(null);
   const [picker, setPicker] = useState(false);
+  const presets = useQuery({ queryKey: ['tool-presets'], queryFn: api.toolPresets, enabled: picker });
   const library = useQuery({ queryKey: ['tool-library'], queryFn: api.library, enabled: picker });
   const action = useAction();
   const frozen = study.status === 'frozen';
   return <div className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">The selected caller chooses a function and generates arguments from its schema.</p>
-      {!frozen && <div className="flex gap-2"><Button variant="outline" onClick={() => setPicker(true)}>Add from library</Button><Button onClick={() => setEditing(blankTool)}>Add tool</Button></div>}
+      {!frozen && <div className="flex gap-2"><Button variant="outline" onClick={() => setPicker(true)}>Add from library / templates</Button><Button onClick={() => setEditing(blankTool)}>Add tool</Button></div>}
     </div>
     <div className="grid gap-5 lg:grid-cols-2">{study.tools.map((tool: Tool) => <Card key={tool.id}>
       <CardHeader><CardTitle className="font-mono text-base">{tool.name}</CardTitle><CardDescription>{tool.description}</CardDescription></CardHeader>
@@ -34,7 +35,10 @@ export function Tools({ study }: { study: Study }) {
     <Dialog open={editing !== null} onOpenChange={open => { if (!open) setEditing(null); }}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>Tool designer</DialogTitle><DialogDescription>This definition belongs to this study. Freeze the study to preserve its schema, implementation and configuration.</DialogDescription></DialogHeader>
       {editing && <ToolEditor key={editing.id ?? 'new'} initial={editing} save={async definition => { await action.mutateAsync(() => api.request(`/studies/${study.id}/tools${editing.id ? `/${editing.id}` : ''}`, editing.id ? 'PUT' : 'POST', definition)); setEditing(null); }} />}
     </DialogContent></Dialog>
-    <Dialog open={picker} onOpenChange={setPicker}><DialogContent className="max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>Add a library tool</DialogTitle><DialogDescription>Adds a copy; later library edits do not change this study.</DialogDescription></DialogHeader><ErrorNotice error={library.error} />
+    <Dialog open={picker} onOpenChange={setPicker}><DialogContent className="max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>Add a tool</DialogTitle><DialogDescription>Adds a copy; later library edits do not change this study.</DialogDescription></DialogHeader><ErrorNotice error={library.error} /><ErrorNotice error={presets.error} />
+      <p className="text-sm font-medium">Starter templates</p>
+      {presets.data?.map(tool => <div key={tool.name} className="rounded-lg border p-3"><p className="font-mono text-sm">{tool.name}</p><p className="my-2 text-sm text-muted-foreground">{tool.description}</p><Button size="sm" disabled={action.isPending || study.tools.some(existing => existing.name === tool.name)} onClick={() => action.mutate(async () => { await api.request(`/studies/${study.id}/tools`, 'POST', tool); setPicker(false); })}>Add to study</Button></div>)}
+      <p className="text-sm font-medium">Saved library tools</p>
       {library.data?.map(tool => <div key={tool.id} className="rounded-lg border p-3"><p className="font-mono text-sm">{tool.definition.name}</p><p className="my-2 text-sm text-muted-foreground">{tool.definition.description}</p><Button size="sm" disabled={action.isPending || study.tools.some(existing => existing.name === tool.definition.name)} onClick={() => action.mutate(async () => { await api.request(`/studies/${study.id}/tools/attach`, 'POST', { library_id: tool.id }); setPicker(false); })}>Add to study</Button></div>)}
       {library.data?.length === 0 && <p className="text-sm text-muted-foreground">The library is empty. <Link className="underline" to="/tools">Create a tool</Link> first.</p>}
     </DialogContent></Dialog>

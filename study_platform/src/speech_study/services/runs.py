@@ -16,6 +16,7 @@ from ..domain.errors import ConflictError, NotFoundError, RuntimeConnectionError
 from ..domain.models import Condition, Review, Run, RunStatus, StudyStatus, new_id
 from ..infrastructure.runtime_client import RuntimeClient, RuntimeConnection
 from ..infrastructure.unit_of_work import UnitOfWork
+from .callers import settings_for
 
 
 class RunService:
@@ -37,7 +38,8 @@ class RunService:
     def start(self, study_id: str, case_id: str, conditions: list[Condition]) -> list[Run]:
         if not conditions or len(set(conditions)) != len(conditions):
             raise ValueError("Select one or more distinct conditions")
-        return self._enqueue(study_id, [(case_id, condition) for condition in conditions])
+        comparison_id = new_id()
+        return self._enqueue(study_id, [(case_id, condition, 1, comparison_id) for condition in conditions])
 
     def matrix(self, study_id: str) -> list[Run]:
         with UnitOfWork(self.database) as work:
@@ -45,11 +47,17 @@ class RunService:
             if study.status != StudyStatus.FROZEN:
                 raise ConflictError("Freeze the study before running the evaluation matrix")
             cases = [c for c in work.cases.list_for_study(study_id) if c.split == "evaluation"]
-            order = [(case.id, condition) for _ in range(study.settings.repetitions) for case in cases for condition in Condition]
+            order = [(case.id, condition, repetition + 1, comparison_id)
+                     for repetition in range(study.settings.repetitions) for case in cases
+                     for comparison_id in [new_id()] for condition in Condition]
         random.Random(study.settings.seed).shuffle(order)
         return self._enqueue(study_id, order)
 
-    def _enqueue(self, study_id: str, order: list[tuple[str, Condition]]) -> list[Run]:
+    def _enqueue(self, study_id: str, order) -> list[Run]:
+        with self.database.lock:
+            return self._enqueue_locked(study_id, order)
+
+    def _enqueue_locked(self, study_id, order):
         connection = self.connection_provider()
         RuntimeClient(connection).health()
         runs = []
@@ -57,13 +65,22 @@ class RunService:
             study = work.studies.get(study_id)
             cases = {case.id: case for case in work.cases.list_for_study(study_id)}
             tools = work.tools.list_for_study(study_id)
-            snapshot = study.snapshot or {"settings": asdict(study.settings), "cases": [asdict(case) for case in cases.values()], "tools": [asdict(tool) for tool in tools]}
+            snapshot = study.snapshot or {"settings": asdict(study.settings), "caller_profiles": study.caller_profiles, "cases": [asdict(case) for case in cases.values()], "tools": [asdict(tool) for tool in tools]}
             checked = set()
-            for case_id, condition in order:
+            profiles = study.caller_profiles or [asdict(study.settings.caller)]
+            randomizer = random.Random(study.settings.seed)
+            expanded = []
+            for case_id, condition, repetition, comparison_id in order:
+                randomized_profiles = list(profiles)
+                randomizer.shuffle(randomized_profiles)
+                expanded.extend((case_id, condition, repetition, comparison_id, profile) for profile in randomized_profiles)
+            for case_id, condition, repetition, comparison_id, profile in expanded:
                 case = cases.get(case_id)
                 if case is None:
                     raise NotFoundError("Case not found in this study")
                 if case_id not in checked:
+                    if case.audio_deletion_pending:
+                        raise ConflictError('Finish deleting this question\'s audio before running it')
                     if not case.audio_path or not case.audio_sha256:
                         raise ValueError("Prepare audio before starting inference")
                     if self.artifacts.checksum(case.audio_path) != case.audio_sha256:
@@ -71,23 +88,26 @@ class RunService:
                     checked.add(case_id)
                 oracle = None
                 if condition == Condition.REFERENCE:
-                    oracle = case.oracle_result if case.category != "none" else None
+                    oracle = case.oracle_result if case.category != "none" and case.oracle_mode == "fixed" else None
                     if oracle is not None and not oracle.strip():
                         raise ValueError("Add a correct B2 reference result for this tool case")
                 request = RunRequest(
                     condition=condition,
                     audio_path=case.audio_path,
                     audio_sha256=case.audio_sha256,
-                    settings=study.settings,
+                    settings=settings_for(study.settings, profile),
                     tools=[asdict(tool) for tool in tools] if condition == Condition.PROPOSED else [],
                     oracle_result=oracle,
+                    oracle_mode=case.oracle_mode if condition == Condition.REFERENCE else "fixed",
                 ).to_payload()
-                run = Run(new_id(), study_id, case_id, condition, request, snapshot, study.status, runtime_url=connection.url)
+                run = Run(new_id(), study_id, case_id, condition, request, snapshot, study.status, runtime_url=connection.url,
+                          caller_profile=profile, comparison_id=comparison_id, repetition=repetition)
                 work.runs.save(run)
                 runs.append(run)
         for run in runs:
             self.operations.submit("inference", {"run_id": run.id, "study_id": run.study_id,
-                                                    "case_id": run.case_id, "condition": run.condition})
+                                                    "case_id": run.case_id, "condition": run.condition,
+                                                    "caller_profile": run.caller_profile, "comparison_id": run.comparison_id, "repetition": run.repetition})
         return runs
 
     def runtime_client(self, run: Run) -> RuntimeClient:
@@ -116,7 +136,8 @@ class RunService:
         client = self._client(run)
         directory = f"runs/{run.id}"
         self.artifacts.write_json(f"{directory}/request.json", run.request)
-        self.operations.report("Submitting inference", details={"condition": run.condition, "case_id": run.case_id})
+        self.operations.report("Submitting inference", details={"condition": run.condition, "case_id": run.case_id,
+                                                                   "caller_profile": run.caller_profile, "comparison_id": run.comparison_id})
         try:
             if not run.runtime_job_id:
                 checksum = self.artifacts.checksum(run.request["audio_path"])
@@ -193,7 +214,8 @@ class RunService:
             run.status = RunStatus.RUNNING
             work.runs.save(run)
         return self.operations.submit("inference", {"run_id": run_id, "study_id": run.study_id,
-                                                   "case_id": run.case_id, "condition": run.condition})
+                                                   "case_id": run.case_id, "condition": run.condition,
+                                                    "caller_profile": run.caller_profile, "comparison_id": run.comparison_id, "repetition": run.repetition})
 
     def recover(self):
         with UnitOfWork(self.database) as work:

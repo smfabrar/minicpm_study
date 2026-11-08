@@ -214,6 +214,41 @@ Open **http://127.0.0.1:8080** and leave the tunnel running. With `-N`, no remot
 shell prompt is expected. The mapping is laptop **8080** → server **8765**.
 If local port 8080 is busy, use `8081:127.0.0.1:8765` and open local port 8081.
 
+### Container environment and direct website access
+
+For a fresh Vast instance, supply application configuration in the template's
+Docker Options / Environment Variables before starting it. The On-start script
+and services inherit those variables:
+
+```text
+SPEECH_STUDY_REF=main
+SPEECH_BUILD_JOBS=2
+SPEECH_MONGODB_URI=mongodb+srv://USER:PASSWORD@CLUSTER/?retryWrites=true&w=majority
+SPEECH_MONGODB_DATABASE=minicpm_study
+EXA_API_KEY=YOUR_EXA_KEY
+```
+
+Use a revision already pushed to the repository. Docker-injected variables do
+not require private environment files; existing `runtime.env` and `study.env`
+assignments override inherited values. Keep secrets out of committed templates.
+Allow the new server's outgoing IP in Atlas before starting the study service.
+Stop any laptop study backend using the same database before running the hosted one.
+
+SSH tunnels work with the default `SPEECH_STUDY_HOST=127.0.0.1` and
+`SPEECH_STUDY_PORT=8765`. This supports microphone recording through localhost.
+For direct website access, explicitly set `SPEECH_STUDY_HOST=0.0.0.0`, keep
+`SPEECH_STUDY_PORT=8765`, and add `-p 8765:8765` in Docker Options (or a TCP port
+entry of 8765). The study backend serves both frontend and API through this port.
+Vast assigns an external port; use the mapping for 8765 in IP Port Info. Pipeline
+8766 and native gateway 8000 remain internal.
+
+The platform has no application login. Direct public access needs an authenticated
+HTTPS proxy; plain HTTP on a public IP does not support browser microphone access.
+Publishing a port does not provide authentication or TLS. Until that proxy is
+configured, use the SSH website tunnel above. Updating the installation regenerates
+the launcher with support for `SPEECH_STUDY_HOST`; merely adding the variable to an
+old launcher will not change its bind address.
+
 ## Configure and validate a study
 
 On the **server**, display the generated settings:
@@ -242,6 +277,47 @@ transcripts, operation logs, telemetry and relevant context acknowledgements
 before queuing a larger study. An acknowledgement establishes delivery, not that
 the model spoke the correct answer. See the [study workflow](../study_platform/README.md)
 and [tool designer](../docs/TOOL_DESIGNER.md) for experiment details.
+
+## Enable web search
+
+The editable `web_search` Python template uses Exa Search. On November 3, 2026,
+[Exa's Starter plan](https://exa.ai/pricing) lists $10 monthly free credits and
+no required payment method. This is a finite allowance, not unlimited free search.
+For no paid usage, stay on the free plan without adding a payment method or
+enabling paid billing. The app makes one search request per tool call; it does
+not manage your Exa billing settings. Exhausted credits produce a visible tool
+failure. No Exa account is needed for the server-clock tool.
+
+After updating the installation, create the private configuration on the
+**pipeline server**:
+
+```bash
+cd /workspace/minicpm-study-install/minicpm_study
+run=/workspace/minicpm-study-install/runtime
+# Copy only when runtime.env does not already exist.
+if [ ! -f "$run/runtime.env" ]; then
+  cp installation/runtime.env.example "$run/runtime.env"
+fi
+chmod 600 "$run/runtime.env"
+nano "$run/runtime.env"
+```
+
+Set `EXA_API_KEY='your-key'` in that file, save, then run:
+
+```bash
+bash installation/restart.sh "$run" runtime
+```
+
+The generated runtime launcher loads `runtime.env` and passes it to Python tool
+processes. This file is separate from Atlas's `study.env`. Do not put the key in
+tool source, study settings or notes; those are exported. `runtime.env` is ignored
+by Git and is not part of study exports. Recreate it on each replacement machine.
+Existing installations must run the update below to regenerate the launcher.
+
+In a draft study, use **Tools → Add from library / templates** to add `web_search`
+or `server_datetime`; new studies already contain them. See the
+[tool workflow](../docs/TOOL_DESIGNER.md#server-clock-and-current-information-search)
+for B2 references, source review and the revised starter questions.
 
 ## Update an existing installation
 

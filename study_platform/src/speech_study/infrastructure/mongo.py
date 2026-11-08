@@ -67,7 +67,7 @@ class MongoRepository:
         self.collection.replace_one({'_id': entity.id}, row, upsert=True, session=self.session)
 
     def delete(self, identifier):
-        self.get(identifier)
+        self.get(identifier, include_deleted=True)
         self.collection.delete_one({'_id': identifier}, session=self.session)
 
 

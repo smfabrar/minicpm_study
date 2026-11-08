@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from .dependencies import ServiceContainer
 from .schemas import ToolInput
+from ..services.default_tools import default_tools
 
 router = APIRouter(prefix="/api/tools", tags=["tool library"])
 
@@ -9,6 +10,11 @@ router = APIRouter(prefix="/api/tools", tags=["tool library"])
 @router.get("")
 def list_tools(container: ServiceContainer):
     return container.library.list()
+
+
+@router.get("/presets")
+def tool_presets():
+    return [ToolInput(**definition) for definition in default_tools()]
 
 
 @router.post("", status_code=201)

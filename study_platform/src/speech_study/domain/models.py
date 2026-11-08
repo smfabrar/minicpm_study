@@ -43,6 +43,7 @@ class Case:
     category: str = "none"
     expected_answer: str = ""
     oracle_result: str = ""
+    oracle_mode: str = "fixed"
     expected_tool: str = ""
     expected_arguments: dict[str, Any] = field(default_factory=dict)
     split: str = "development"
@@ -51,6 +52,8 @@ class Case:
     audio_origin: str | None = None
     audio_provenance: dict[str, Any] = field(default_factory=dict)
     preparation_trace: str | None = None
+    audio_deletion_pending: bool = False
+    input_import: dict[str, Any] = field(default_factory=dict)
     notes: str = ""
 
 
@@ -84,6 +87,9 @@ class Study:
     updated_at: str = field(default_factory=utc_now)
     snapshot: dict[str, Any] | None = None
     deleted_at: str | None = None
+    artifact_directories: list[str] = field(default_factory=list)
+    purge_plan: dict[str, Any] | None = None
+    caller_profiles: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -115,6 +121,9 @@ class Run:
     output_segments: list[dict[str, Any]] = field(default_factory=list)
     analysis_trace: str | None = None
     artifact_directory: str | None = None
+    caller_profile: dict[str, str] | None = None
+    comparison_id: str | None = None
+    repetition: int = 1
 
 
 @dataclass(slots=True)

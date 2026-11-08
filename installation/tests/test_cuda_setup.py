@@ -123,8 +123,9 @@ def test_generated_runtime_script_preserves_literal_paths_and_existing_environme
     recorder = binary / "speech-runtime"
     recorder.write_text(f"#!{sys.executable}\nimport json, os, sys\n"
                         "print(json.dumps({'args': sys.argv[1:], 'hf': os.environ['HF_HOME'], "
-                        "'libs': os.environ['LD_LIBRARY_PATH'], 'active': os.environ['SETUP_ACTIVATED'], 'path': os.environ['PATH']}))\n")
+                        "'libs': os.environ['LD_LIBRARY_PATH'], 'active': os.environ['SETUP_ACTIVATED'], 'path': os.environ['PATH'], 'exa': os.environ['EXA_API_KEY']}))\n")
     recorder.chmod(0o755)
+    (root / 'runtime.env').write_text("EXA_API_KEY='test-key-not-a-secret'\n")
     setup.LaunchFiles(config, setup.CommandRunner(dict(os.environ))).write(
         {"library_paths": [str(root / "cublas/lib"), str(root / "cudnn/lib")], "devices": []}, None)
     result = subprocess.run(["bash", root / "bin/start_runtime.sh"], cwd=tmp_path,
@@ -135,6 +136,7 @@ def test_generated_runtime_script_preserves_literal_paths_and_existing_environme
     assert recorded["hf"] == str(root / "models/cache")
     assert recorded["libs"].endswith(":/existing/libs")
     assert recorded["active"] == "yes"
+    assert recorded['exa'] == 'test-key-not-a-secret'
     assert recorded["path"].split(os.pathsep)[0] == str(config.cuda_home / "bin")
     assert not (tmp_path / "SHOULD_NOT_EXIST").exists()
     assert not (root / "bin/start_native.sh").exists()
@@ -193,7 +195,8 @@ def test_settings_use_server_paths_and_one_gpu_device(tmp_path):
     assert support.run_settings(models, Path("/srv/demo"), patch, 2)["tts_device"] == "cuda:0"
 
 
-def test_generated_native_and_study_scripts_have_valid_shell_and_frozen_settings(tmp_path):
+@pytest.mark.parametrize('host,port', [('127.0.0.1', '8765'), ('0.0.0.0', '8765'), ('0.0.0.0', '8080')])
+def test_generated_native_and_study_scripts_have_valid_shell_and_frozen_settings(tmp_path, host, port):
     config = configuration(tmp_path, root=tmp_path / "runtime with spaces", with_platform=True)
     config.python.parent.mkdir(parents=True)
     config.python.write_text(f'#!/usr/bin/env bash\nexec {shlex.quote(sys.executable)} "$@"\n')
@@ -223,9 +226,10 @@ def test_generated_native_and_study_scripts_have_valid_shell_and_frozen_settings
     study_binary.write_text(f'#!{sys.executable}\nimport json, sys\nprint(json.dumps(sys.argv[1:]))\n')
     study_binary.chmod(0o755)
     launched = subprocess.run(["bash", config.root / "bin/start_study.sh"],
-                              env=dict(os.environ, SPEECH_STUDY_PORT="8080"),
+                              env=dict(os.environ, SPEECH_STUDY_HOST=host, SPEECH_STUDY_PORT=port),
                               capture_output=True, text=True, check=True)
-    assert json.loads(launched.stdout) == ["--data", str(config.root / "data/platform"), "--port", "8080"]
+    assert json.loads(launched.stdout) == ["--data", str(config.root / "data/platform"),
+                                         "--host", host, "--port", port]
 
 
 def toolkit_fixture(root, layout):

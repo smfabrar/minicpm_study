@@ -1,4 +1,4 @@
-import type { Study, StudySummary, Run, Telemetry, Analysis, RuntimeHealth, Operation, OperationDetails, LibraryTool } from './types';
+import type { Study, StudySummary, Run, Telemetry, Analysis, RuntimeHealth, Operation, OperationDetails, LibraryTool, ToolPayload } from './types';
 class ApiClient {
   async request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
     const response = await fetch(`/api${path}`, { method, cache: 'no-store', headers: body instanceof FormData ? undefined : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body) });
@@ -10,6 +10,7 @@ class ApiClient {
   }
   studies = () => this.request<StudySummary[]>('/studies');
   trash = () => this.request<StudySummary[]>('/studies?deleted=true');
+  toolPresets = () => this.request<ToolPayload[]>('/tools/presets');
   library = () => this.request<LibraryTool[]>('/tools');
   operation = (id: string) => this.request<OperationDetails>(`/operations/${id}`);
   study = (id: string) => this.request<Study>(`/studies/${id}`);

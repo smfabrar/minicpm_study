@@ -33,7 +33,7 @@ export function RunPage() {
       <div>
         <Link className="text-sm text-muted-foreground" to={`/studies/${run.study_id}`}>← Study</Link>
         <div className="mt-3 flex items-center gap-3">
-          <h1>{run.condition} run</h1>
+          <h1>{run.condition} run · {run.caller_profile?.model || 'Legacy caller'}</h1>
           <Status value={run.status} />
         </div>
         <p className="mt-2 max-w-3xl text-muted-foreground">
@@ -90,6 +90,9 @@ export function RunPage() {
             </CardHeader>
             <CardContent>
               <JsonView value={event.attributes} />
+              {event.name === 'tool.python_finished' && run.artifact_directory && typeof event.attributes.log_file === 'string' && <Button asChild variant="outline" className="mt-3">
+                <a href={artifactUrl(`${run.artifact_directory}/${event.attributes.log_file}`)} download>Download tool log</a>
+              </Button>}
             </CardContent>
           </Card>)}
         </div>

@@ -27,7 +27,7 @@ from speech_study.app import create_app
 with tempfile.TemporaryDirectory() as directory:
     with TestClient(create_app(Path(directory))) as client:
         study = client.post('/api/studies', json={{'name': 'Independent'}}).json()
-        assert len(client.get('/api/studies/' + study['id']).json()['tools']) == 3
+        assert len(client.get('/api/studies/' + study['id']).json()['tools']) == 4
         assert client.post('/api/studies/' + study['id'] + '/template').json()['case_count'] == 48
 '''
     result = subprocess.run([sys.executable, '-I', '-c', program], capture_output=True, text=True)

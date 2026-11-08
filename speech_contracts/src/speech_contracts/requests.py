@@ -13,11 +13,13 @@ class RunRequest:
     settings: RunSettings = field(default_factory=RunSettings)
     tools: list[dict[str, Any]] = field(default_factory=list)
     oracle_result: str | None = None
+    oracle_mode: str = "fixed"
 
     def to_payload(self) -> dict:
         payload = asdict(self)
         if self.condition != "B2":
             payload.pop("oracle_result")
+            payload.pop("oracle_mode")
         self.from_dict(payload)
         return payload
 
@@ -29,7 +31,14 @@ class RunRequest:
             raise ValueError("An input audio path is required")
         if data.get("condition") == "B1" and "oracle_result" in data:
             raise ValueError("B1 must not receive oracle data")
+        mode = data.get("oracle_mode", "fixed")
+        if mode not in {"fixed", "server_clock"}:
+            raise ValueError("Unknown B2 reference mode")
+        if "oracle_mode" in data and data["condition"] != "B2":
+            raise ValueError("Oracle mode is exclusive to B2")
         oracle = data.get("oracle_result")
+        if mode == "server_clock" and oracle is not None:
+            raise ValueError("Server-clock references must not contain a saved fact")
         if oracle is not None and (not isinstance(oracle, str) or not oracle.strip()):
             raise ValueError("B2 reference result cannot be empty")
         if oracle is not None and data["condition"] != "B2":
@@ -39,7 +48,7 @@ class RunRequest:
             raise ValueError("Invalid runtime configuration")
         settings = RunSettings.from_dict(settings)
         return cls(data["condition"], data["audio_path"], data.get("audio_sha256", ""), settings,
-                   data.get("tools", []) if data["condition"] == "B1" else [], oracle)
+                   data.get("tools", []) if data["condition"] == "B1" else [], oracle, mode)
 
 
 @dataclass(frozen=True, slots=True)

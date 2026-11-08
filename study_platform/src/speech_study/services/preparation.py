@@ -16,6 +16,7 @@ from .studies import StudyService
 from speech_contracts import SynthesisRequest
 from ..infrastructure.preparation_trace import PreparationTrace
 from ..infrastructure.unit_of_work import UnitOfWork
+from ..domain.errors import ConflictError
 
 
 class PreparationService:
@@ -34,9 +35,13 @@ class PreparationService:
         case = next((c for c in details.cases if c.id == case_id), None)
         if case is None:
             raise ValueError("Case not found in study")
+        if case.audio_deletion_pending:
+            raise ConflictError('Finish deleting this question\'s audio before preparing it')
         RuntimeClient(self.connection_provider()).health()
         with UnitOfWork(self.studies.database) as work:
             self.studies.require_editable(work.studies.get(study_id))
+            if work.cases.get(case_id).audio_deletion_pending:
+                raise ConflictError('Finish deleting this question\'s audio before preparing it')
             return self.operations.submit("synthesis", {"study_id": study_id, "case_id": case_id,
                                                         "question": case.question, "settings": asdict(details.study.settings)})
 
@@ -71,6 +76,7 @@ class PreparationService:
         settings = RunSettings.from_dict(payload["settings"])
         key = SynthesisRequest(payload["question"], settings).cache_key()
         directory = f"audio/synthesized/{key}"
+        self.studies.reserve_artifact_directory(payload["study_id"], directory)
         audio_path = f"{directory}/input.wav"
         manifest = self.artifacts.resolve(f"{directory}/manifest.json")
         if manifest.is_file() and self.artifacts.resolve(audio_path).is_file():
@@ -90,14 +96,24 @@ class PreparationService:
                                   expected_question=payload["question"])
 
     def upload(self, study_id: str, case_id: str, content: bytes, origin: str = "uploaded"):
+        with self.studies.database.lock:
+            return self._upload(study_id, case_id, content, origin)
+
+    def _upload(self, study_id, case_id, content, origin):
         if origin not in {"uploaded", "recorded"}:
             raise ValueError("Unknown audio origin")
         details = self.studies.get(study_id)
         self.studies.require_editable(details.study)
+        case = next((item for item in details.cases if item.id == case_id), None)
+        if case is None:
+            raise ValueError('Case not found in this study')
+        if case.audio_deletion_pending:
+            raise ConflictError('Finish deleting this question\'s audio before replacing it')
         if not content or len(content) > 50 * 1024 * 1024:
             raise ValueError("Upload a PCM WAV file smaller than 50 MiB")
         key = hashlib.sha256(content).hexdigest()
         directory = f"audio/uploaded/{key}"
+        self.studies.reserve_artifact_directory(study_id, directory)
         trace = PreparationTrace()
         with trace.span("preparation.audio_upload"):
             original = self.artifacts.write(f"{directory}/original.wav", content)

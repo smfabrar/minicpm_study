@@ -36,6 +36,39 @@ def test_zero_argument_python_executes_and_retains_source_and_output(tmp_path):
     assert json.loads((tmp_path / record['request_file']).read_text())['source'] == source
 
 
+def test_clock_template_executes_in_python_worker_and_preserves_evidence(tmp_path):
+    source = 'from tool_pipeline.live_tools import server_datetime_result\ndef execute(arguments):\n    return server_datetime_result()\n'
+    registry = ToolRegistry([python_tool(source)], TraceRecorder(), tmp_path)
+    result = asyncio.run(registry.execute('current_datetime', {}, 'Read the clock'))
+    assert result['evidence']['implementation'] == 'server-clock-v1'
+    assert result['sources'] == ['system://server-clock']
+    saved = json.loads(next(tmp_path.glob('*-result.json')).read_text())
+    assert saved['evidence'] == result['evidence']
+
+
+def test_exa_search_log_is_retained_as_a_tool_artifact(tmp_path, monkeypatch):
+    monkeypatch.setenv('EXA_API_KEY', 'test-key-not-a-secret')
+    source = '''import io, json
+from tool_pipeline import live_tools
+def response(request, timeout):
+    return io.BytesIO(json.dumps({"requestId": "fixture-search", "results": [
+        {"title": "Release", "url": "https://example.org/release", "highlights": ["A new release is available."]}
+    ]}).encode())
+live_tools.urlopen = response
+def execute(arguments):
+    return live_tools.ExaSearch().search("latest software release")
+'''
+    registry = ToolRegistry([python_tool(source, name='web_search')], TraceRecorder(), tmp_path)
+    result = asyncio.run(registry.execute('web_search', {}, 'Latest software release'))
+    record = json.loads((tmp_path / result['execution_file']).read_text())
+    log = (tmp_path / record['log_file']).read_text()
+    entries = [json.loads(line) for line in log.splitlines()]
+    assert entries[1]['body']['query'] == 'latest software release'
+    assert entries[2]['body']['requestId'] == 'fixture-search'
+    assert entries[-1]['facts'] == result['facts']
+    assert 'test-key-not-a-secret' not in log
+
+
 def test_multiple_typed_optional_arguments_are_validated_before_execution(tmp_path):
     parameters = {'type': 'object', 'properties': {'count': {'type': 'integer', 'minimum': 1, 'maximum': 5},
                   'enabled': {'type': 'boolean'}, 'suffix': {'type': 'string'}}, 'required': ['count'], 'additionalProperties': False}

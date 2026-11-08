@@ -2,6 +2,20 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseStudySettings, verifySavedSettings } from '../src/lib/settings.ts';
 
+test('comparison preserves the selected caller and gives the other caller its own precision', async () => {
+  const { comparisonProfiles } = await import('../src/lib/settings.ts');
+  const profiles = comparisonProfiles({ caller_backend: 'qwen3', caller_model: '/models/qwen',
+    caller_revision: 'qwen-pin', caller_device: 'cuda:0', caller_quantization: 'nf4',
+    granite_model: '/models/granite', granite_revision: 'granite-pin' });
+  assert.deepEqual(profiles.map(profile => profile.backend), ['qwen3', 'granite']);
+  assert.equal(profiles[0].model, '/models/qwen');
+  assert.equal(profiles[0].revision, 'qwen-pin');
+  assert.equal(profiles[0].quantization, 'nf4');
+  assert.equal(profiles[1].model, '/models/granite');
+  assert.equal(profiles[1].revision, 'granite-pin');
+  assert.equal(profiles[1].quantization, 'none');
+});
+
 test('rejects duplicate reference paths instead of silently choosing the empty value', () => {
   assert.throws(() => parseStudySettings('{"reference_audio":"/server/voice.wav","reference_audio":""}'), /Duplicate setting/);
 });

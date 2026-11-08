@@ -33,6 +33,9 @@ class StudyRepository:
     def save(self, entity: Study) -> None:
         self.connection.execute("INSERT INTO studies VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", (entity.id, encode(entity)))
 
+    def delete(self, identifier: str) -> None:
+        self.connection.execute("DELETE FROM studies WHERE id=?", (identifier,))
+
     @staticmethod
     def _decode(row) -> Study:
         data = json.loads(row["payload"])
@@ -99,6 +102,9 @@ class RunRepository:
 
     def save(self, entity: Run) -> None:
         self.connection.execute("INSERT INTO runs VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", (entity.id, entity.study_id, entity.case_id, encode(entity)))
+
+    def delete(self, identifier: str) -> None:
+        self.connection.execute("DELETE FROM runs WHERE id=?", (identifier,))
 
     @staticmethod
     def _decode(row) -> Run:

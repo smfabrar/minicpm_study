@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, ArrowUpRight, FlaskConical } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { Study } from '@/lib/types';
+import type { Study, StudySummary } from '@/lib/types';
 import { useAction } from '@/hooks/use-data';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -17,6 +17,7 @@ export function Dashboard() {
   const studies = useQuery({ queryKey: ['studies'], queryFn: api.studies, refetchInterval: 5000 });
   const [open, setOpen] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
+  const [purging, setPurging] = useState<StudySummary | null>(null);
   const trash = useQuery({ queryKey: ['trash'], queryFn: api.trash, enabled: showTrash });
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -36,7 +37,7 @@ export function Dashboard() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create a study</DialogTitle>
-            <DialogDescription>Start with three tool fixtures and a reproducible configuration.</DialogDescription>
+            <DialogDescription>Start with editable tools and an IBM Granite/Qwen caller comparison.</DialogDescription>
           </DialogHeader>
           <form onSubmit={event => { event.preventDefault(); action.mutate(async () => { const study = await api.request<Study>('/studies', 'POST', { name, description }); setOpen(false); navigate(`/studies/${study.id}`); }); }}>
             <FieldGroup>
@@ -53,8 +54,14 @@ export function Dashboard() {
       </Dialog>
     </div>
     <ErrorNotice error={studies.error} />
+    <Dialog open={purging !== null} onOpenChange={open => { if (!open) setPurging(null); }}><DialogContent><DialogHeader>
+      <DialogTitle>Permanently delete {purging?.name}?</DialogTitle>
+      <DialogDescription>Removes metadata, runs, operation logs and unshared recordings from Atlas and local storage. This cannot be undone.</DialogDescription>
+      </DialogHeader><ErrorNotice error={action.error} /><Button variant="destructive" disabled={action.isPending} onClick={() => action.mutate(async () => {
+        await api.request(`/studies/${purging!.id}`, 'DELETE'); setPurging(null);
+      })}>Delete permanently</Button></DialogContent></Dialog>
     <div><Button variant="outline" onClick={() => setShowTrash(!showTrash)}>{showTrash ? 'Hide Trash' : 'Show Trash'}</Button></div>
-    {showTrash && <Card><CardHeader><CardTitle>Trash</CardTitle><CardDescription>Deleted studies retain their files and run history.</CardDescription></CardHeader><CardContent className="space-y-3"><ErrorNotice error={trash.error} />{trash.data?.map(study => <div key={study.id} className="flex items-center justify-between gap-4 rounded-lg border p-3"><div><p>{study.name}</p><p className="text-xs text-muted-foreground">{study.case_count} cases · {study.run_count} runs</p></div><Button size="sm" disabled={action.isPending} onClick={() => action.mutate(() => api.request(`/studies/${study.id}/restore`, 'POST'))}>Restore</Button></div>)}{trash.data?.length === 0 && <p className="text-sm text-muted-foreground">Trash is empty.</p>}</CardContent></Card>}
+    {showTrash && <Card><CardHeader><CardTitle>Trash</CardTitle><CardDescription>Older trashed studies and interrupted deletions still occupy storage. Permanently delete them to reclaim it.</CardDescription></CardHeader><CardContent className="space-y-3"><ErrorNotice error={trash.error} />{trash.data?.map(study => <div key={study.id} className="flex items-center justify-between gap-4 rounded-lg border p-3"><div><p>{study.name}</p><p className="text-xs text-muted-foreground">{study.case_count} cases · {study.run_count} runs</p></div><div className="flex gap-2"><Button size="sm" disabled={action.isPending || Boolean(study.purge_plan)} onClick={() => action.mutate(() => api.request(`/studies/${study.id}/restore`, 'POST'))}>Restore</Button><Button size="sm" variant="destructive" onClick={() => setPurging(study)}>Delete permanently</Button></div></div>)}{trash.data?.length === 0 && <p className="text-sm text-muted-foreground">Trash is empty.</p>}</CardContent></Card>}
     <div className="grid gap-4 sm:grid-cols-3">
       {[['Studies', studies.data?.length ?? 0], ['Cases', studies.data?.reduce((sum, study) => sum + study.case_count, 0) ?? 0], ['Runs collected', studies.data?.reduce((sum, study) => sum + study.run_count, 0) ?? 0]].map(([label, value]) => <Card key={label}>
         <CardHeader>

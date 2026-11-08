@@ -9,6 +9,14 @@ export interface StudySummary {
   run_count: number;
   updated_at: string;
   deleted_at?: string | null;
+  purge_plan?: unknown;
+}
+export interface CallerProfile {
+  backend: 'granite' | 'qwen3';
+  model: string;
+  revision: string;
+  device: string;
+  quantization: string;
 }
 export interface StudyCase {
   id: string;
@@ -18,12 +26,14 @@ export interface StudyCase {
   split: string;
   expected_answer: string;
   oracle_result: string;
+  oracle_mode?: "fixed" | "server_clock";
   expected_tool: string;
   expected_arguments: Record<string, unknown>;
   notes: string;
   audio_path: string | null;
   audio_sha256: string | null;
   audio_origin: string | null;
+  audio_deletion_pending?: boolean;
 }
 export interface Tool {
   id: string;
@@ -60,6 +70,9 @@ export interface Run {
   study_id: string;
   case_id: string;
   condition: Condition;
+  caller_profile?: CallerProfile | null;
+  comparison_id?: string | null;
+  repetition?: number;
   status: string;
   created_at: string;
   error: string | null;
@@ -100,6 +113,7 @@ export interface Run {
   request: unknown;
 }
 export interface Study extends Omit<StudySummary, 'case_count' | 'run_count'> {
+  caller_profiles?: CallerProfile[];
   cases: StudyCase[];
   tools: Tool[];
   runs: Run[];
@@ -151,6 +165,7 @@ export interface ConditionAnalysis {
   unnecessary_calls: number;
 }
 export interface Analysis {
+  callers: { profile: CallerProfile; conditions: ConditionAnalysis[] }[];
   conditions: ConditionAnalysis[];
   pending: number;
   notes: string[];

@@ -11,6 +11,7 @@ import { ErrorNotice, JsonView } from '@/components/shared';
 import { ToolEditor } from './tool-editor';
 
 export function ToolLibraryPage() {
+  const presets = useQuery({ queryKey: ['tool-presets'], queryFn: api.toolPresets });
   const query = useQuery({ queryKey: ['tool-library'], queryFn: api.library });
   const [editing, setEditing] = useState<{ id?: string; definition: ToolPayload } | null>(null);
   const [deleting, setDeleting] = useState<LibraryTool | null>(null);
@@ -21,7 +22,12 @@ export function ToolLibraryPage() {
         <Button onClick={() => setEditing({ definition: blankTool })}>New tool</Button>
       </div>
     </div>
-    <p className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">Whisper transcribes the input. The selected caller chooses an attached function and generates JSON arguments. The runtime validates and executes it, then submits the returned facts to MiniCPM. B0 runs without tools; B2 uses the saved oracle facts.</p>
+    <p className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">Whisper transcribes the input. The selected caller chooses an attached function and generates JSON arguments. The runtime validates and executes it, then submits the returned facts to MiniCPM. B0 runs without tools; B2 uses the case's reference source.</p>
+    <section className="space-y-2"><h2 className="font-medium">Start from a template</h2>
+      <p className="text-sm text-muted-foreground">Server clock and web search run as editable Python tools. Exa search needs EXA_API_KEY on the pipeline server; keep credentials out of tool code.</p>
+      <div className="flex flex-wrap gap-2">{presets.data?.map(definition => <Button key={definition.name} variant="outline" onClick={() => setEditing({ definition })}>{definition.name}</Button>)}</div>
+      <ErrorNotice error={presets.error} />
+    </section>
     <ErrorNotice error={query.error} />
     <div className="grid gap-5 lg:grid-cols-2">
       {query.data?.map(tool => <Card key={tool.id}>

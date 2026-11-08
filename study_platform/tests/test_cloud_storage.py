@@ -16,6 +16,7 @@ class Collection:
         prefix = query.get('_id', {}).get('$regex') if isinstance(query.get('_id'), dict) else None
         return [deepcopy(v) for k, v in self.rows.items() if prefix is None or re.search(prefix, k)]
     def replace_one(self, query, document, **kwargs): self.rows[query['_id']] = deepcopy(document)
+    def delete_one(self, query, **kwargs): self.rows.pop(query['_id'], None)
 
 
 class FakeDB(dict):
@@ -33,11 +34,15 @@ class Bucket:
         self.files[key] = content
         return key
     def open_download_stream(self, key): return io.BytesIO(self.files[key])
-    def delete(self, key): del self.files[key]
+    def delete(self, key):
+        if key not in self.files:
+            raise FileNotFoundError(key)
+        del self.files[key]
 
 
 def test_gridfs_recovers_empty_cache_and_replaces_existing_content(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, 'gridfs', types.SimpleNamespace(GridFSBucket=Bucket))
+    monkeypatch.setitem(sys.modules, 'gridfs.errors', types.SimpleNamespace(NoFile=FileNotFoundError))
     sys.modules.pop('speech_study.infrastructure.gridfs_store', None)
     module = importlib.import_module('speech_study.infrastructure.gridfs_store')
     db = FakeDB()
@@ -55,6 +60,35 @@ def test_gridfs_recovers_empty_cache_and_replaces_existing_content(tmp_path, mon
     fresh.sync('runs/one/output.wav')
     another = module.GridFSArtifactStore(tmp_path / 'another', db)
     assert another.resolve('runs/one/output.wav').read_bytes() == b'normalized recording'
+    sys.modules.pop('speech_study.infrastructure.gridfs_store', None)
+
+
+def test_gridfs_delete_reclaims_files_and_paths_without_deleting_prefix_neighbors(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, 'gridfs', types.SimpleNamespace(GridFSBucket=Bucket))
+    monkeypatch.setitem(sys.modules, 'gridfs.errors', types.SimpleNamespace(NoFile=FileNotFoundError))
+    sys.modules.pop('speech_study.infrastructure.gridfs_store', None)
+    module = importlib.import_module('speech_study.infrastructure.gridfs_store')
+    db = FakeDB()
+    store = module.GridFSArtifactStore(tmp_path / 'cache', db)
+    store.write('audio/one/input.wav', b'voice')
+    store.write('audio/one/search.log', b'Exa evidence')
+    store.write('audio/one-other/input.wav', b'another study')
+    store.delete('audio/one')
+    assert len(db['artifacts_fixture']) == 1
+    assert set(db['artifacts_paths'].rows) == {'audio/one-other/input.wav'}
+    assert not (store.root / 'audio/one').exists()
+    fresh = module.GridFSArtifactStore(tmp_path / 'fresh', db)
+    assert not fresh.resolve('audio/one/input.wav').exists()
+    assert fresh.resolve('audio/one-other/input.wav').read_bytes() == b'another study'
+    # Retry an interruption between deleting GridFS bytes and their path pointer.
+    db['artifacts_fixture'].clear()
+    fresh.delete('audio/one-other')
+    assert not db['artifacts_paths'].rows
+    assert (store.root / 'audio/one-other/input.wav').exists()
+    store.recover_cache()
+    assert not (store.root / 'audio/one-other/input.wav').exists()
+    with pytest.raises(ValueError):
+        fresh.delete('.')
     sys.modules.pop('speech_study.infrastructure.gridfs_store', None)
 
 
