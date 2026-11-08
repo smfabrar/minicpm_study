@@ -144,12 +144,21 @@ compilation jobs; increasing `--jobs` needs more allocated CPU and host RAM.
 | `--skip-models` | Build without downloading weights or starting services; rerun without this flag to finish |
 | `--runtime-only` | Omit the study website |
 | `--ref COMMIT` | Install a specific application revision |
+| `--min-free-gib N` | Override the free-space check, for example `--min-free-gib 25` on a 30 GB instance |
 | `--dry-run` | Describe steps without changing files |
 
 The free-space floor is 30 GiB for a fresh full install, 10 GiB without weights,
 and 5 GiB when a previous setup manifest exists. These are early checks, not
 storage guarantees. `SPEECH_INSTALL_MIN_FREE_GIB` overrides the floor. Check free
 space on the filesystem holding the prefix, not only `/`.
+
+For a nominal 30 GB instance reporting 29 GiB free, explicitly opt in with
+`bash installation/install.sh --min-free-gib 25 --jobs 2`. The flag overrides
+`SPEECH_INSTALL_MIN_FREE_GIB`; it also works with `installation/update.sh`.
+Previously downloaded installers need updating before they recognize the flag.
+This lowers the prerequisite check; it does not reduce dependency/model sizes or
+reserve storage. Keep input/result data in Atlas and monitor the runtime cache
+as studies and additional models accumulate.
 
 The prefix contains application/reference checkouts, optional Node, and `runtime/`.
 Runtime contains the two Python venvs, native sources, models, `data/` for studies

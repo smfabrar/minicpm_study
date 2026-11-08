@@ -29,6 +29,7 @@ This script does not install CUDA, drivers, or Conda. PyTorch uses a project ven
   --ref REF           Study branch/tag/commit (default: main)
   --cuda-home PATH    Existing CUDA 12.5 toolkit (default: /usr/local/cuda-12.5)
   --jobs N            Native build parallelism (default: 2)
+  --min-free-gib N    Override the minimum free disk space in GiB
   --runtime-only      Omit website and Node installation
   --skip-models       Install/build first without downloading model weights
   --no-start          Install without starting services
@@ -38,6 +39,7 @@ This script does not install CUDA, drivers, or Conda. PyTorch uses a project ven
 SPEECH_STUDY_REPOSITORY can override the Git clone URL for a private repository.
 SPEECH_SETUP_PYTHON can select an existing Python 3.11/3.12 interpreter.
 SPEECH_INSTALL_MIN_FREE_GIB overrides the free-space floor (30 GiB fresh, 10 GiB without models, 5 GiB on an existing installation).
+--min-free-gib takes precedence over SPEECH_INSTALL_MIN_FREE_GIB.
 HELP
 }
 
@@ -45,13 +47,16 @@ die() { printf '%s\n' "$*" >&2; exit 1; }
 
 while (($#)); do
     case "$1" in
-        --prefix|--ref|--cuda-home|--jobs)
+        --prefix|--ref|--cuda-home|--jobs|--min-free-gib)
             (($# >= 2)) || die "$1 requires a value"
             case "$1" in
                 --prefix) install_root="$2" ;;
                 --ref) study_ref="$2" ;;
                 --cuda-home) cuda_home="$2" ;;
                 --jobs) build_jobs="$2" ;;
+                --min-free-gib)
+                    [[ -n "$2" ]] || die '--min-free-gib requires a non-empty value'
+                    minimum_free_gib="$2" ;;
             esac
             shift 2 ;;
         --runtime-only) with_platform=false; shift ;;
@@ -70,7 +75,7 @@ if [[ -z "$minimum_free_gib" ]]; then
     [[ ! -f "$install_root/runtime/setup-manifest.json" ]] || minimum_free_gib=5
 fi
 [[ "$minimum_free_gib" =~ ^[1-9][0-9]{0,3}$ ]] \
-    || die 'SPEECH_INSTALL_MIN_FREE_GIB must be an integer between 1 and 9999'
+    || die 'Minimum free space (--min-free-gib or SPEECH_INSTALL_MIN_FREE_GIB) must be an integer between 1 and 9999'
 
 if "$dry_run"; then
     printf 'Dry run: no changes. Installation root: %s\n' "$install_root"

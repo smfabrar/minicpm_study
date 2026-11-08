@@ -162,6 +162,55 @@ def test_bootstrap_reuses_explicit_toolkit_despite_cuda13_on_path_and_safe_rerun
     assert changed.read_text().endswith("# local user edit\n")
 
 
+@pytest.mark.parametrize('available_gib,accepted', [(24, False), (25, True), (29, True)])
+def test_space_floor_flag_admits_30gb_instances_and_still_rejects_small_disks(tmp_path, available_gib, accepted):
+    tools = tmp_path / 'tools'
+    tools.mkdir()
+    executable(tools / 'uname', '#!/bin/sh\ncase "$1" in -s) echo Linux;; -m) echo x86_64;; esac\n')
+    executable(tools / 'df', '#!/bin/sh\necho "Filesystem 1024-blocks Used Available Capacity Mounted on"\n'
+               f'echo "/fixture 31457280 0 {available_gib * 1024 * 1024} 0% /workspace"\n')
+    executable(tools / 'nvidia-smi', '#!/bin/sh\necho "GPU preflight reached"\nexit 47\n')
+    prefix = tmp_path / 'must not be created'
+    environment = dict(os.environ, PATH=f'{tools}:{os.environ["PATH"]}')
+    environment['SPEECH_INSTALL_MIN_FREE_GIB'] = '30'
+    result = subprocess.run(['bash', ROOT / 'installation/install.sh', '--prefix', prefix,
+                             '--min-free-gib', '25'],
+                            env=environment, capture_output=True, text=True)
+    assert 'requested floor: 25 GiB' in result.stdout
+    if accepted:
+        assert result.returncode == 47
+        assert 'GPU preflight reached' in result.stdout
+        assert 'Not enough disk space' not in result.stderr
+    else:
+        assert 'Not enough disk space' in result.stderr
+        assert 'GPU preflight reached' not in result.stdout
+    assert not prefix.exists()
+
+
+@pytest.mark.parametrize('arguments,expected', [
+    ([], 'Check at least 30 GiB free'),
+    (['--min-free-gib', '25'], 'Check at least 25 GiB free'),
+    (['--skip-models', '--min-free-gib', '25'], 'Check at least 25 GiB free'),
+])
+def test_space_floor_defaults_and_flag_in_dry_run(arguments, expected):
+    environment = dict(os.environ)
+    environment.pop('SPEECH_INSTALL_MIN_FREE_GIB', None)
+    result = subprocess.run(['bash', ROOT / 'installation/install.sh', '--dry-run', *arguments],
+                            env=environment, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert expected in result.stdout
+
+
+@pytest.mark.parametrize('arguments', [
+    ['--min-free-gib'], ['--min-free-gib', '0'], ['--min-free-gib', '-1'],
+    ['--min-free-gib', '25.5'], ['--min-free-gib', 'abc'], ['--min-free-gib', ''],
+])
+def test_invalid_space_floor_flag_is_rejected(arguments):
+    result = subprocess.run(['bash', ROOT / 'installation/install.sh', '--dry-run', *arguments],
+                            capture_output=True, text=True)
+    assert result.returncode != 0
+
+
 def test_small_install_volume_is_rejected_before_downloads_or_system_changes(tmp_path):
     tools = tmp_path / "tools"
     tools.mkdir()
